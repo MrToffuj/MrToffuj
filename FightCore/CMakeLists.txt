@@ -18,6 +18,17 @@ add_library(fightcore
     techniques/Boundless.cpp
     techniques/CalamityFlames.cpp
     techniques/ShadowPuppets.cpp
+    techniques/GraniteCannon.cpp
+    techniques/SkyWeave.cpp
+    techniques/ThunderVessel.cpp
+    techniques/ToolArsenal.cpp
+    techniques/StarMass.cpp
+    techniques/BlossomDraw.cpp
+    techniques/SpiritHoard.cpp
+    techniques/Jackpot.cpp
+    techniques/StrawEffigy.cpp
+    techniques/PuppetPilot.cpp
+    techniques/LightMalice.cpp
 )
 target_include_directories(fightcore PUBLIC include techniques)
 if(MSVC)
@@ -30,3 +41,6 @@ enable_testing()
 add_executable(fightcore_tests tests/test_main.cpp)
 target_link_libraries(fightcore_tests PRIVATE fightcore)
 add_test(NAME fightcore_tests COMMAND fightcore_tests)
+
+add_executable(fightcore_snapshot tools/snapshot.cpp)
+target_link_libraries(fightcore_snapshot PRIVATE fightcore)

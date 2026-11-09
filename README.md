@@ -10,4 +10,5 @@ Eigenes Universum mit Technik-basiertem Kampfsystem, zerstörbarer Welt und Anim
 - Kolonien (Maps): [docs/MAPS.md](docs/MAPS.md)
 - Online (P2P) & Lobbys: [docs/NETWORKING.md](docs/NETWORKING.md)
 - Zerstörung: [docs/DESTRUCTION.md](docs/DESTRUCTION.md)
-- Artstyle: [docs/ART_STYLE.md](docs/ART_STYLE.md)
+- Artstyle: [docs/ART_STYLE.md](docs/ART_STYLE.md) · Recherche Anime-Look: [docs/ANIME_LOOK.md](docs/ANIME_LOOK.md)
+- Vorschau-Bilder: [docs/preview](docs/preview)

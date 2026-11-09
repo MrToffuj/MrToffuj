@@ -110,6 +110,8 @@ struct Projectile {
     int16_t armDelay = 0;  // inactive for this many frames (telegraphed attacks)
     Vec3 pos{}, vel{};
     Fx radius{};
+    bool beam = false;     // pos is the start, vel the direction, length how far it reaches
+    Fx length{};
 };
 
 struct ObstacleState {

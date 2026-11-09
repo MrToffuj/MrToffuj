@@ -31,7 +31,10 @@ enum class EFightMap : uint8
 {
 	ShrineWard UMETA(DisplayName = "Shrine Ward (small)"),
 	HarborDistrict UMETA(DisplayName = "Harbor District (medium)"),
-	OldCapital UMETA(DisplayName = "Old Capital (large)")
+	OldCapital UMETA(DisplayName = "Old Capital (large)"),
+	TempleSteps UMETA(DisplayName = "Temple Steps (medium)"),
+	ShatteredDowntown UMETA(DisplayName = "Shattered Downtown (large)"),
+	FrozenLake UMETA(DisplayName = "Frozen Lake (medium, open)")
 };
 
 UENUM(BlueprintType)
@@ -47,7 +50,17 @@ enum class EFightTechnique : uint8
 	None,
 	Boundless,
 	CalamityFlames UMETA(DisplayName = "Calamity Flames"),
-	ShadowPuppets UMETA(DisplayName = "Shadow Puppets")
+	ShadowPuppets UMETA(DisplayName = "Shadow Puppets"),
+	GraniteCannon UMETA(DisplayName = "Granite Cannon"),
+	SkyWeave UMETA(DisplayName = "Sky Weave"),
+	ThunderVessel UMETA(DisplayName = "Thunder Vessel"),
+	StarMass UMETA(DisplayName = "Star Mass"),
+	BlossomDraw UMETA(DisplayName = "Blossom Draw"),
+	SpiritHoard UMETA(DisplayName = "Spirit Hoard"),
+	Jackpot,
+	StrawEffigy UMETA(DisplayName = "Straw Effigy"),
+	PuppetPilot UMETA(DisplayName = "Puppet Pilot"),
+	LightMalice UMETA(DisplayName = "Light & Malice")
 };
 
 UENUM(BlueprintType)

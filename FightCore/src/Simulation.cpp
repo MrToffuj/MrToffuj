@@ -158,6 +158,34 @@ int TechContext::spawnProjectile(Vec3 pos, Vec3 vel, Fx radius, int16_t life, in
     return -1;
 }
 
+int TechContext::spawnBeam(Vec3 start, Vec3 dir, Fx length, Fx radius, int16_t life, int16_t moveIndex, int16_t armDelay) const {
+    const int i = spawnProjectile(start, normalizeXZ(dir, m.f[self].facing), radius, life, moveIndex, armDelay);
+    if (i >= 0) {
+        m.proj[i].beam = true;
+        m.proj[i].length = length;
+    }
+    return i;
+}
+
+void TechContext::strike(int target, int16_t moveIndex) const {
+    if (target < 0 || target == self || m.f[target].out) return;
+    const MoveDef& mv = setup.loadout[self].technique->moves[moveIndex];
+    detail::PendingHit h{true, &mv, static_cast<int16_t>(moveIndex + kTechMoveOffset), false, m.f[target].pos,
+                         normalizeXZ(m.f[target].pos - m.f[self].pos, m.f[self].facing)};
+    h.target = static_cast<int8_t>(target);
+    detail::applyHit(m, setup, self, h, events);
+}
+
+void TechContext::burnOut(int16_t frames) const {
+    FighterState& f = m.f[self];
+    f.ce = 0;
+    f.reinforce = false;
+    if (f.burnout < frames) f.burnout = frames;
+    emit(ImpactKind::Burnout, f.pos, {}, Fx{}, ImpactClass::Light);
+}
+
+bool TechContext::isEnemy(int other) const { return fc::isEnemy(m, self, other); }
+
 void TechContext::emit(ImpactKind kind, Vec3 pos, Vec3 dir, Fx force, ImpactClass strength, int16_t tag) const {
     if (events) events->push_back({m.frame, kind, static_cast<uint8_t>(self), strength, tag, pos, dir, force});
 }
@@ -238,6 +266,7 @@ int32_t ceMaxOf(const MatchSetup& s, const MatchState& m, int i) {
 }
 
 int32_t skillCost(const MatchState& m, const MatchSetup& s, int i, int slot) {
+    if (s.loadout[i].technique->ceFree) return 0;
     int32_t c = s.loadout[i].technique->skills[slot].ceCost * 100;
     if (debuffed(m, s, i)) c = c * 150 / 100;
     if (buffed(m, s, i)) c = c / 2;
@@ -306,9 +335,10 @@ Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
                        f.realm.clashWith < 0 && (allowed & catBit(MoveCategory::Realm));
             if (can) { Cmd c; c.move = kRealmCast; c.realm = true; return ok(c, BtnUlt, a); }
         } else {
-            int32_t cost = ceMaxOf(s, m, i) / 2;
-            bool can = T && T->maxOutputMove >= 0 && !f.maxOutputUsed && !pm.noMaxOutput && f.burnout == 0 && cost > 0 &&
-                       f.ce >= cost && (allowed & catBit(MoveCategory::MaxOutput));
+            const int32_t cost = T && T->ceFree ? 0 : ceMaxOf(s, m, i) / 2;
+            bool can = T && T->maxOutputMove >= 0 && !f.maxOutputUsed && !pm.noMaxOutput && f.burnout == 0 &&
+                       (T->ceFree || (cost > 0 && f.ce >= cost)) && (allowed & catBit(MoveCategory::MaxOutput)) &&
+                       (!T->logic || T->logic->canUseSkill(TechContext{m, s, i, nullptr}, 3));
             if (can) {
                 Cmd c; c.move = static_cast<int16_t>(T->maxOutputMove + kTechMoveOffset); c.maxOutput = true; c.ceCost = cost;
                 return ok(c, BtnUlt, a);
@@ -400,6 +430,7 @@ int speedPctOf(const MatchState& m, const MatchSetup& s, int i) {
     // keeping a closed realm up slows you down
     const RealmState& r = m.f[i].realm;
     if (r.active() && !r.open) p /= 2;
+    if (const TechniqueLogic* l = logicOf(s, i)) p = p * l->speedPct(TechContext{const_cast<MatchState&>(m), s, i, nullptr}) / 100;
     return p;
 }
 
@@ -551,7 +582,11 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
                 f.vel = {v.x, f.vel.y, v.z};
             }
             if (f.moveFrame == mv.eventFrame) {
-                if (mv.category == MoveCategory::Realm) openRealm(m, s, i, ev);
+                if (mv.category == MoveCategory::Realm) {
+                    const TechniqueDef* T = s.loadout[i].technique;
+                    if (T && T->replacesRealm) T->logic->onRealmOpen(TechContext{m, s, i, ev});
+                    else openRealm(m, s, i, ev);
+                }
                 else if (f.moveId >= kTechMoveOffset)
                     if (const TechniqueLogic* l = logicOf(s, i))
                         l->onMoveEvent(TechContext{m, s, i, ev}, static_cast<int16_t>(f.moveId - kTechMoveOffset));
@@ -761,7 +796,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
         }
     }
 
-    if (dl && dl->nullifiesIncoming(dctx, mv, h.projectile)) {
+    if (dl && !mv.isCounter && dl->nullifiesIncoming(dctx, mv, h.projectile, atk)) {
         a.hitstop = d.hitstop = 4;
         emit(ev, m, ImpactKind::Nullified, di, p.impact, h.point, h.dir, p.knockback);
         return;
@@ -786,6 +821,8 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
         d.stun = static_cast<int16_t>(p.blockstun * (200 - mods(m, s, di).blockPct) / 100);
         d.vel = h.dir * (p.knockback * Fx::ratio(1, 2));
         emit(ev, m, ImpactKind::Block, atk, p.impact, h.point, h.dir, p.knockback);
+        if (al) al->onBlock(actx, true);
+        if (dl) dl->onBlock(dctx, false);
         return;
     }
 
@@ -850,6 +887,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     addRealmMeter(d, dmg / 4);
     if (!blackSpark) emit(ev, m, ImpactKind::Hit, atk, p.impact, h.point, h.dir, p.knockback + p.launch);
     if (al && !fromCompanion) al->onHitLanded(actx, techIdx, h.projectile, di);
+    if (dl) dl->onHitTaken(dctx, atk);
 }
 
 bool hitsFighter(const MatchState& m, int target, Vec3 c, Fx r) {
@@ -876,6 +914,23 @@ int firstEnemyHit(const MatchState& m, const MatchSetup& s, int atk, Vec3 c, Fx 
         if (hitsFighter(m, j, c, r)) return j;
     }
     return -1;
+}
+
+int firstBeamHit(const MatchState& m, const MatchSetup& s, const Projectile& p) {
+    static const Fx hurtY[3] = {Fx::ratio(5, 10), Fx::ratio(12, 10), Fx::ratio(17, 10)};
+    int best = -1;
+    Fx bestT{};
+    for (int j = 0; j < m.count; ++j) {
+        if (!canHurt(m, s, p.owner, j) || isInvulnerable(m, s, j)) continue;
+        for (Fx y : hurtY) {
+            const Vec3 c = m.f[j].pos + Vec3{Fx{}, y, Fx{}};
+            const Fx t = dot(c - p.pos, p.vel);
+            if (t < Fx{} || t > p.length) continue;
+            const Vec3 closest = p.pos + p.vel * t;
+            if (overlap(closest, p.radius, c, Fx::ratio(45, 100)) && (best < 0 || t < bestT)) { best = j; bestT = t; }
+        }
+    }
+    return best;
 }
 
 void moveToward(Vec3& p, Vec3 target, Fx speed) {
@@ -923,10 +978,22 @@ void updateProjectiles(MatchState& m, const MatchSetup& s, Ev ev) {
     for (Projectile& p : m.proj) {
         if (!p.alive) continue;
         if (p.armDelay > 0) { --p.armDelay; continue; }
-        p.pos += p.vel;
+        if (!p.beam) p.pos += p.vel;
         const bool fromCompanion = p.source > 0;
         const MoveDef& mv = fromCompanion ? companionMove(s, p.owner, p.source - 1, p.moveIndex)
                                           : s.loadout[p.owner].technique->moves[p.moveIndex];
+        if (p.beam) {
+            const int victim = firstBeamHit(m, s, p);
+            if (victim >= 0) {
+                PendingHit h{true, &mv, static_cast<int16_t>(p.moveIndex + kTechMoveOffset), true, m.f[victim].pos, p.vel};
+                h.target = static_cast<int8_t>(victim);
+                applyHit(m, s, p.owner, h, ev);
+                p.alive = false;
+            } else if (--p.life <= 0) {
+                p.alive = false;
+            }
+            continue;
+        }
         if (projectileHitsCompanion(m, s, p, mv, ev)) { p.alive = false; continue; }
         const int target = firstEnemyHit(m, s, p.owner, p.pos, p.radius, false);
         if (target >= 0) {
@@ -1353,7 +1420,7 @@ uint64_t hashState(const MatchState& m) {
         x.addInt(p.alive);
         if (!p.alive) continue;
         x.addInt(p.owner); x.addInt(p.source); x.addInt(p.moveIndex); x.addInt(p.life); x.addInt(p.armDelay);
-        x.add(p.pos); x.add(p.vel); x.add(p.radius);
+        x.add(p.pos); x.add(p.vel); x.add(p.radius); x.addInt(p.beam); x.add(p.length);
     }
     for (const ObstacleState& o : m.obstacles) { x.addInt(o.hp); x.addInt(o.broken); }
     const ObjectiveState& o = m.objective;

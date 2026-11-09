@@ -41,6 +41,9 @@ namespace maps {
 const MapDef& shrineWard();     // small colony, 1v1
 const MapDef& harborDistrict(); // medium colony, 2v2
 const MapDef& oldCapital();     // large colony, Brawl / Custom
+const MapDef& templeSteps();    // pillar ring around a hall
+const MapDef& shatteredDowntown(); // dense city grid
+const MapDef& frozenLake();     // wide open, few wrecks
 } // namespace maps
 
 // technique is null for Heaven's Bind

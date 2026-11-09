@@ -39,6 +39,9 @@ struct TechniqueDef {
     MaxOutputType maxOutputType = MaxOutputType::Burst;
     RealmClass realmClass = RealmClass::Damage;
     std::vector<const CompanionDef*> companions;
+    const char* realmName = "";
+    bool ceFree = false;        // skills and Max Output cost no CE (Heaven's Bind tools)
+    bool replacesRealm = false; // the realm cast only calls onRealmOpen, no realm is created
     const TechniqueLogic* logic = nullptr;
 };
 
@@ -55,6 +58,12 @@ struct TechContext {
     bool realmIsMine() const;
     Vec3 localToWorld(Vec3 offset) const;
     int spawnProjectile(Vec3 pos, Vec3 vel, Fx radius, int16_t life, int16_t moveIndex, int16_t armDelay = 0) const;
+    // A straight beam from start along dir. Hits the first enemy in the way once, then it's gone.
+    int spawnBeam(Vec3 start, Vec3 dir, Fx length, Fx radius, int16_t life, int16_t moveIndex, int16_t armDelay = 0) const;
+    // Hit a fighter directly with one of our moves (counters, follow-ups). Goes through blocking and damage rules.
+    void strike(int target, int16_t moveIndex) const;
+    void burnOut(int16_t frames) const;
+    bool isEnemy(int other) const;
     void emit(ImpactKind kind, Vec3 pos, Vec3 dir, Fx force, ImpactClass strength, int16_t tag = 0) const;
     void damage(int target, int16_t amount) const;  // raw damage that skips all modifiers (burn, recoil)
     // Summon one of TechniqueDef::companions. Returns the slot or -1.
@@ -75,7 +84,12 @@ public:
     // moveIndex is -1 for base moves
     virtual void onHitLanded(const TechContext&, int16_t /*moveIndex*/, bool /*projectile*/, int /*victim*/) const {}
     // return true to cancel the hit entirely
-    virtual bool nullifiesIncoming(const TechContext&, const MoveDef&, bool /*projectile*/) const { return false; }
+    virtual bool nullifiesIncoming(const TechContext&, const MoveDef&, bool /*projectile*/, int /*attacker*/) const { return false; }
+    // after a hit landed on us (not blocked)
+    virtual void onHitTaken(const TechContext&, int /*attacker*/) const {}
+    // a hit was blocked; attacking says which side we were on
+    virtual void onBlock(const TechContext&, bool /*attacking*/) const {}
+    virtual int speedPct(const TechContext&) const { return 100; }
     virtual void onParry(const TechContext&, const MoveDef&) const {}
     virtual int damageDealtPct(const TechContext&, int16_t /*moveIndex*/) const { return 100; }
     virtual int damageTakenPct(const TechContext&) const { return 100; }

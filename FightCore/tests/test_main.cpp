@@ -848,6 +848,178 @@ static void testBotsPlayObjective() {
     CHECK(taken);
 }
 
+// ---- techniques from the second batch
+
+struct Duel {
+    MatchSetup s;
+    MatchState m;
+    EventSink ev;
+    Duel(const TechniqueDef* tech, const BodyDef& body = bodies::caster(), const TechniqueDef* other = &calamityFlames()) {
+        s = makeSetup(body, tech, bodies::heavy(), other);
+        m = closeRange(s);
+        m.f[0].realmMeter = kRealmMeterMax;
+    }
+    void cast(uint16_t buttons, int frames = 90) {
+        m.f[0].state = FState::Idle;
+        m.f[0].moveId = -1;
+        m.f[0].cooldown = {0, 0, 0};
+        m.f[0].burnout = 0;
+        if (s.stats[0].ceMax > 0) m.f[0].ce = s.stats[0].ceMax;
+        run(m, s, frames, press(buttons), &ev);
+    }
+    int16_t hpLost() const { return static_cast<int16_t>(s.stats[1].maxHealth - m.f[1].health); }
+};
+
+static void testEveryTechniqueDoesDamage() {
+    std::puts("every technique: skills and max output connect, no crashes");
+    const TechniqueDef* all[] = {&graniteCannon(), &skyWeave(),    &thunderVessel(), &starMass(),    &blossomDraw(),
+                                 &spiritHoard(),   &jackpot(),     &strawEffigy(),   &puppetPilot(), &lightMalice(),
+                                 &boundless(),     &calamityFlames(), &shadowPuppets()};
+    for (const TechniqueDef* t : all) {
+        Duel d(t);
+        // let film / frames build up, put the opponent right in front
+        run(d.m, d.s, 400, [](int, FrameInput&, FrameInput&) {});
+        d.m.f[1].pos = d.m.f[0].pos + d.m.f[0].facing * Fx::ratio(16, 10);
+        for (uint16_t b : {static_cast<uint16_t>(BtnMod | BtnLight), static_cast<uint16_t>(BtnMod | BtnHeavy),
+                           static_cast<uint16_t>(BtnMod | BtnGrab), static_cast<uint16_t>(BtnUlt)}) {
+            d.m.f[1].health = d.s.stats[1].maxHealth;
+            d.m.f[1].pos = d.m.f[0].pos + d.m.f[0].facing * Fx::ratio(16, 10);
+            d.cast(b, 140);
+        }
+        int total = 0;
+        for (const auto& e : d.ev) total += e.kind == ImpactKind::Hit || e.kind == ImpactKind::GuaranteedHit;
+        if (total == 0) std::printf("  %s never hit anything\n", t->name);
+        CHECK(total > 0);
+    }
+}
+
+static void testGraniteStacks() {
+    std::puts("granite cannon: hits charge the beam");
+    Duel cold(&graniteCannon()), hot(&graniteCannon());
+    cold.m.f[1].pos = cold.m.f[0].pos + Vec3{Fx{}, Fx{}, Fx::fromInt(6)};
+    hot.m.f[1].pos = cold.m.f[1].pos;
+    hot.m.f[0].tech[0] = 5;
+    cold.cast(BtnMod | BtnLight, 40);
+    hot.cast(BtnMod | BtnLight, 40);
+    CHECK(cold.hpLost() > 0 && hot.hpLost() > cold.hpLost() * 2);
+}
+
+static void testSkyFilm() {
+    std::puts("sky weave: needs film, a hit tears it");
+    Duel d(&skyWeave());
+    d.cast(BtnMod | BtnLight, 4);
+    CHECK(d.m.f[0].state != FState::Attack); // no film yet
+    run(d.m, d.s, 250, [](int, FrameInput&, FrameInput&) {});
+    CHECK(d.m.f[0].tech[0] >= 2);
+    run(d.m, d.s, 12, press(0, BtnLight));
+    CHECK(d.m.f[0].tech[0] == 0);
+}
+
+static void testAmberBurnout() {
+    std::puts("thunder vessel: amber form ends in burnout");
+    Duel d(&thunderVessel());
+    d.cast(BtnUlt, 40);
+    CHECK(d.m.f[0].tech[1] > 0);
+    run(d.m, d.s, 480, [](int, FrameInput&, FrameInput&) {});
+    CHECK(d.m.f[0].burnout > 0 && d.m.f[0].tech[4] > 0); // burned out and exposed
+}
+
+static void testArcAndBlossomCounters() {
+    std::puts("counters: arc counter and falling petal punish a jab");
+    for (const TechniqueDef* t : {&thunderVessel(), &blossomDraw()}) {
+        Duel d(t);
+        const uint16_t stance = t == &thunderVessel() ? static_cast<uint16_t>(BtnMod | BtnGrab) : static_cast<uint16_t>(BtnMod | BtnHeavy);
+        run(d.m, d.s, 25, [&](int f, FrameInput& p0, FrameInput& p1) {
+            if (f == 0) p0.buttons = stance;
+            if (f == 3) p1.buttons = BtnLight;
+        }, &d.ev);
+        CHECK(d.m.f[0].health == d.s.stats[0].maxHealth && d.hpLost() > 0);
+    }
+    // two absolute counters must not bounce forever
+    MatchSetup s = makeSetup(bodies::caster(), &blossomDraw(), bodies::caster(), &blossomDraw());
+    MatchState m = closeRange(s);
+    m.f[0].tech[1] = m.f[1].tech[1] = 600;
+    run(m, s, 12, press(BtnLight, BtnLight));
+    CHECK(true);
+}
+
+static void testToolArsenal() {
+    std::puts("tool arsenal: no CE needed, spear shuts techniques down, kill window");
+    MatchSetup s = makeSetup(bodies::heavensBind(), &toolArsenal(), bodies::caster(), &boundless());
+    MatchState m = closeRange(s);
+    CHECK(m.f[0].ce == 0);
+    m.f[1].realm.timer = 300;
+    m.f[1].realm.center = m.f[1].pos;
+    run(m, s, 30, press(BtnMod | BtnGrab));
+    CHECK(m.f[1].health < s.stats[1].maxHealth && m.f[1].burnout > 0 && !m.f[1].realm.active());
+    m = closeRange(s);
+    m.f[0].realmMeter = kRealmMeterMax;
+    run(m, s, kRealmCastFrames + 3, press(BtnMod | BtnUlt));
+    CHECK(m.f[1].state == FState::Locked && m.f[0].tech[1] > 0 && !m.f[0].realm.active());
+    // still immune to guaranteed hits
+    CHECK(s.stats[0].guaranteedHitImmune);
+}
+
+static void testStrawMarks() {
+    std::puts("straw effigy: nail marks, pin burst detonates from range");
+    Duel d(&strawEffigy());
+    d.m.f[1].pos = d.m.f[0].pos + Vec3{Fx{}, Fx{}, Fx::fromInt(5)};
+    d.cast(BtnMod | BtnLight, 40);
+    CHECK(d.m.f[0].tech[0] == (1 << 1));
+    const int16_t afterNail = d.m.f[1].health;
+    d.m.f[1].pos = d.m.f[0].pos + Vec3{Fx{}, Fx{}, Fx::fromInt(15)};
+    d.cast(BtnMod | BtnHeavy, 30);
+    CHECK(d.m.f[1].health < afterNail && d.m.f[0].tech[0] == 0);
+}
+
+static void testJackpot() {
+    std::puts("jackpot: full meter = unlimited CE and healing");
+    Duel d(&jackpot());
+    d.m.f[0].tech[0] = 95;
+    d.m.f[0].health = 300;
+    run(d.m, d.s, 10, press(BtnLight), &d.ev); // the jab tips it over
+    CHECK(d.m.f[0].tech[1] > 0);
+    d.m.f[0].ce = 0;
+    run(d.m, d.s, 60, [](int, FrameInput&, FrameInput&) {});
+    CHECK(d.m.f[0].ce == d.s.stats[0].ceMax && d.m.f[0].health > 300);
+}
+
+static void testPuppetFrame() {
+    std::puts("puppet pilot: frame deploys, losing it locks the technique");
+    Duel d(&puppetPilot());
+    run(d.m, d.s, 2, [](int, FrameInput&, FrameInput&) {});
+    TechContext ctx{d.m, d.s, 0, nullptr};
+    const int slot = ctx.companionSlot(0);
+    CHECK(slot >= 0);
+    d.m.f[0].lostMask = static_cast<uint8_t>(1u << d.s.techRosterStart[0]);
+    d.m.f[0].comp[slot] = CompanionState{};
+    d.cast(BtnMod | BtnLight, 4);
+    CHECK(d.m.f[0].state != FState::Attack);
+}
+
+static void testSpiritAbsorb() {
+    std::puts("spirit hoard: absorb eats a projectile and revives a spirit");
+    MatchSetup s = makeSetup(bodies::caster(), &spiritHoard(), bodies::caster(), &calamityFlames());
+    MatchState m = createMatch(s);
+    m.f[0].lostMask = static_cast<uint8_t>(1u << s.techRosterStart[0]);
+    m.f[1].ce = s.stats[1].ceMax;
+    run(m, s, 80, [](int f, FrameInput& p0, FrameInput& p1) {
+        if (f == 0) p1.buttons = BtnMod | BtnLight; // Ember Moths at P1
+        if (f == 22) p0.buttons = BtnMod | BtnGrab; // absorb just before it lands
+    });
+    CHECK(m.f[0].lostMask == 0 && m.f[0].health == s.stats[0].maxHealth);
+}
+
+static void testLightRecoil() {
+    std::puts("light & malice: every skill costs your own health");
+    Duel d(&lightMalice());
+    d.cast(BtnMod | BtnLight, 30);
+    CHECK(d.m.f[0].health < d.s.stats[0].maxHealth);
+    d.m.f[0].health = 5;
+    d.cast(BtnUlt, 80);
+    CHECK(d.m.f[0].health == 1 && !d.m.f[0].out);
+}
+
 int main() {
     testBodiesBalanced();
     testDeterminismAndRollback();
@@ -886,6 +1058,17 @@ int main() {
     testCheckpoints();
     testFriendlyFireAndFfaDeathmatch();
     testBotsPlayObjective();
+    testEveryTechniqueDoesDamage();
+    testGraniteStacks();
+    testSkyFilm();
+    testAmberBurnout();
+    testArcAndBlossomCounters();
+    testToolArsenal();
+    testStrawMarks();
+    testJackpot();
+    testPuppetFrame();
+    testSpiritAbsorb();
+    testLightRecoil();
     if (g_failed) { std::printf("%d check(s) failed\n", g_failed); return EXIT_FAILURE; }
     std::puts("all tests passed");
     return EXIT_SUCCESS;

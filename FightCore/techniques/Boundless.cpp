@@ -56,7 +56,7 @@ public:
         pull(c.opp(), c.me().pos, Fx::fromInt(30), Fx::ratio(3, 100));
     }
 
-    bool nullifiesIncoming(const TechContext& c, const MoveDef& mv, bool projectile) const override {
+    bool nullifiesIncoming(const TechContext& c, const MoveDef& mv, bool projectile, int) const override {
         FighterState& me = c.me();
         if (me.burnout > 0 || me.ce < kFieldCost) return false;
         const bool light = mv.category == MoveCategory::Normal && mv.hit.impact == ImpactClass::Light;

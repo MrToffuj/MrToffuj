@@ -135,6 +135,16 @@ Cast-Zeit (60 F) und Dauer (600 F) für alle gleich, nur der Effekt unterscheide
 | Blood Craft | Blut-Meter, Skills teils mit HP bezahlt | Blutlanze / Roter Strom / Verdichtung | Blutnova (Burst) | BuffField (gratis Blut) | Glass Cannon | ⏳ |
 | Frame Sorcery | 24-Bilder-Regel: wer deine Frames bricht, friert ein | Bildsprung / Bildfessel / Bildfolge | Zeitraffer (Transform) | Debuff | Lesbar, Regelbruch friert dich selbst ein | ⏳ |
 | Spell Voice | Befehle kosten CE + Selbstschaden | „Halt!“ / „Zerbirst!“ / „Fort!“ | Massenbefehl (Burst) | Lock | Selbstschaden, wenig Defense | ⏳ |
+| **Granite Cannon** | Output-Stacks: Treffer laden den Beam | Granite Beam / Shockwave (Anti-Air) / Charge Guard | Full Output (Burst) | Granite Furnace (Damage) | Charge lesbar, kaum Mobility | ✅ |
+| **Sky Weave** | Sky-Film: Himmel wird zur faltbaren Fläche, Film-Ladungen bauen sich auf | Sky Drop / Sky Pull / Sky Wall | Sky Tear (Zone) | Folded Heaven (Debuff) | Film braucht Setup, reißt bei Treffern | ✅ |
+| **Thunder Vessel** | Charge-Stacks, Bolt entlädt alles | Bolt (Beam) / Jolt Dash / Arc Counter | Amber Form (Transform, danach Burnout) | Storm Hall (BuffField) | Nach Amber schutzlos | ✅ |
+| **Star Mass** | Masse-Stacks: Normals stapeln virtuelle Masse | Mass Slam / Weightless / Star Wing (Striker-Begleiter) | Black Hole (Burst, zieht an) | Gravity Well (Damage) | Viel Setup, CE-hungrig | ✅ |
+| **Blossom Draw** | Counter-Zone: Guard kontert Nahkampf automatisch (kostet CE) | Draw Cut / Falling Petal (Iai-Counter) / Step In | Absolute Counter (Transform) | Petal Field (BuffField) | Reaktiv, ohne Read nutzlos | ✅ |
+| **Spirit Hoard** | Spirit-Pool: bis zu 3 absorbierte Geister | Prism Serpent / Release / Absorb | Spiral Collapse (Burst, verbraucht Geister) | Spirit Nest (Debuff) | Pool leer = nackt, Geister killbar | ✅ |
+| **Jackpot** | Jackpot-Meter über Treffer + Blocks → unendlich CE + Auto-Heilung | Ball Rush / Shutter Wall / Reel Dash | Fever Mode (Transform) | Lucky Express (BuffField, Walzen drehen) | Ohne Jackpot dünn | ✅ |
+| **Straw Effigy** | Resonanz-Marken: Nägel markieren, später zünden | Nail / Pin Burst / Decoy Doll | Full Resonance (Burst) | Resonance Chamber (Debuff) | Fragil, Marken sichtbar | ✅ |
+| **Puppet Pilot** | Remote-Body: Battle Frame kämpft, du bleibst hinten | Cannon / Stray Drone (Anti-Air) / Dash Blade | Overdrive Frame (Transform) | Puppet Theater (Lock) | Frame kaputt = Technik weg | ✅ |
+| **Light & Malice** | Lichtgeschwindigkeit + manifestierte Tötungsabsicht | Light Beam / Light Step / Killing Intent | Reversal Beam (Burst) | Blinding Hall (Damage) | Jeder Skill kostet eigene HP (bleibt bei min. 1), sehr teuer | ✅ |
 
 ## 7. Binding Oaths ✅ (Grundsystem)
 

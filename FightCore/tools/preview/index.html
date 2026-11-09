@@ -1,0 +1,101 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}
+#hud{position:absolute;left:0;top:0;width:100%;font:600 18px system-ui,sans-serif;color:#fff;pointer-events:none}
+.bar{position:absolute;height:22px;background:rgba(0,0,0,.6);border:2px solid rgba(0,0,0,.6)}.fill{height:100%}
+.lbl{position:absolute;text-shadow:0 1px 3px #000}</style></head>
+<body><div id="hud"></div><script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const q = new URLSearchParams(location.search);
+const data = await (await fetch(q.get('data'))).json();
+const view = q.get('view') || 'chase';
+const W = 1600, H = 900;
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(W, H); renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+// sky only visible straight up through the colony; dusk gradient
+scene.background = new THREE.Color(0x6f86a8);
+scene.fog = new THREE.Fog(0x6f86a8, 80, 400);
+const toW = p => new THREE.Vector3(p[0], p[1], p[2]); // sim: x right, y up, z forward -> three uses the same handedness flip on x
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(30, 60, 20); key.castShadow = true;
+key.shadow.mapSize.set(2048,2048); Object.assign(key.shadow.camera,{left:-90,right:90,top:90,bottom:-90,far:200});
+scene.add(key, new THREE.HemisphereLight(0xbfd4ff, 0x30302a, 1.1));
+const R = data.radius;
+const ground = new THREE.Mesh(new THREE.CircleGeometry(R + 2, 128), new THREE.MeshStandardMaterial({color:0x3a4038, roughness:1}));
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+// the barrier: pitch black curtain, rendered from the inside
+const barrier = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.5, R + 0.5, 300, 160, 1, true),
+  new THREE.MeshBasicMaterial({color:0x000000, side:THREE.DoubleSide}));
+barrier.position.y = 150; scene.add(barrier);
+const rim = new THREE.Mesh(new THREE.RingGeometry(R + 0.1, R + 0.6, 160), new THREE.MeshBasicMaterial({color:0x2a1a3a, side:THREE.DoubleSide}));
+rim.rotation.x = -Math.PI/2; rim.position.y = 0.02; scene.add(rim);
+const stone = new THREE.MeshStandardMaterial({color:0x7a6a5c, roughness:.9});
+const rubble = new THREE.MeshStandardMaterial({color:0x4d443c, roughness:1});
+for (const o of data.obstacles) {
+  const h = o.broken ? 0.6 : o.h;
+  const b = new THREE.Mesh(new THREE.BoxGeometry(o.hx*2, h, o.hz*2), o.broken ? rubble : stone);
+  b.position.set(o.c[0], h/2, o.c[2]); b.castShadow = b.receiveShadow = true; scene.add(b);
+}
+const teamColor = t => {
+  const fixed = [0xf25926, 0x2673f2, 0x4dd94d, 0xe6cc26];
+  if (data.teams > 0 && t < 4) return new THREE.Color(fixed[t]);
+  if (data.mode === 'duel') return new THREE.Color(fixed[t & 1]);
+  return new THREE.Color().setHSL(((t * 47) % 256) / 256, 0.75, 0.55);
+};
+const colorFor = (f, i) => {
+  if (f.state === 6 || f.state === 8) return new THREE.Color(0xffffff); // hitstun / knockdown
+  if (f.state === 9 || f.state === 7) return teamColor(f.team).multiplyScalar(.5).add(new THREE.Color(0,.5,.5));
+  if (f.state === 12) return new THREE.Color(0x801ab3);
+  return teamColor(f.team);
+};
+data.fighters.forEach((f, i) => {
+  if (f.out) return;
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(.45,.45,1.8,24), new THREE.MeshStandardMaterial({color:colorFor(f,i), roughness:.6}));
+  body.position.y = .9; body.castShadow = true; g.add(body);
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(.25,.25,.25), new THREE.MeshStandardMaterial({color:0x111111}));
+  nose.position.set(0, 1.5, .45); g.add(nose);
+  g.position.copy(toW(f.p)); g.rotation.y = Math.atan2(f.d[0], f.d[2]); scene.add(g);
+  for (const c of f.comp) {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(.5,20,14), new THREE.MeshStandardMaterial({color:0xd94099}));
+    s.position.copy(toW(c)); s.castShadow = true; scene.add(s);
+  }
+  if (f.realm) {
+    const r = f.realmOpen ? 10 : 18;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 96), new THREE.MeshBasicMaterial({color:0x8a2be2, transparent:true, opacity:.18}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(f.rc[0], .03, f.rc[2]); scene.add(disc);
+  }
+});
+for (const p of data.projectiles) {
+  const s = new THREE.Mesh(new THREE.SphereGeometry(p.r,20,14), new THREE.MeshBasicMaterial({color:teamColor(data.fighters[p.owner].team)}));
+  s.position.copy(toW(p.p)); scene.add(s);
+}
+// hurtbox spheres like the debug view in Unreal
+const camera = new THREE.PerspectiveCamera(36, W/H, .1, 1000);
+const me = data.fighters[0], tgt = data.fighters[me.target] || data.fighters[1];
+if (view === 'chase') {
+  const self = toW(me.p), opp = toW(tgt.p);
+  const fwd = opp.clone().sub(self).setY(0); const dist = fwd.length(); fwd.normalize();
+  const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0,1,0)).normalize().multiplyScalar(-1);
+  const back = 4.3 + Math.max(0, 3 - dist) * .5;
+  camera.position.copy(self).addScaledVector(fwd, -back).addScaledVector(right, -.6).add(new THREE.Vector3(0, 2.2, 0));
+  camera.lookAt(self.clone().addScaledVector(fwd, Math.min(9, Math.max(2, dist * .6))).add(new THREE.Vector3(0,1.1,0)));
+} else {
+  // high up but still inside the barrier, looking across the colony
+  camera.fov = 55; camera.updateProjectionMatrix();
+  camera.position.set(-R * .55, R * .55, -R * .7); camera.lookAt(R * .1, 0, R * .15);
+}
+renderer.render(scene, camera);
+// minimal HUD in the same layout as the Unreal placeholder HUD
+const hud = document.getElementById('hud');
+const panel = (f, right, label) => {
+  const x = right ? `right:40px` : `left:40px`;
+  hud.insertAdjacentHTML('beforeend', `<div class="lbl" style="${x};top:20px;color:#${teamColor(f.team).getHexString()}">${label}</div>
+   <div class="bar" style="${x};top:52px;width:38%"><div class="fill" style="width:${Math.max(0,f.hp)*100}%;background:#e6332a;${right?'margin-left:auto':''}"></div></div>
+   <div class="bar" style="${x};top:86px;width:30%;height:12px"><div class="fill" style="width:70%;background:#3399ff;${right?'margin-left:auto':''}"></div></div>`);
+};
+if (view === 'chase') { panel(me, false, 'P1'); panel(tgt, true, 'BOT ' + (me.target + 1)); }
+hud.insertAdjacentHTML('beforeend', `<div class="lbl" style="left:0;right:0;top:${view==='chase'?120:20}px;text-align:center;font-size:${view==='chase'?16:22}px">${data.map.toUpperCase()} · ${view==='chase'?(q.get('label')||'OPEN BRAWL'):'COLONY OVERVIEW'} · frame ${data.frame}</div>`);
+document.title = 'done';
+</script></body></html>

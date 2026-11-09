@@ -30,6 +30,11 @@ schwarzen Barriere. Drinnen ist alles zerstörbar, die Barriere selbst nie.
 | **Shrine Ward** | 14 m | 4 Steinsäulen um die Mitte, 1 Zone | 1v1 |
 | **Harbor District** | 20 m | 6 Lagerhallen/Kisten, 3 Zonen | 2v2, kleine Custom-Matches |
 | **Old Capital** | 70 m | 16 Häuser in zwei Ringen, 3 Zonen | Brawl, Custom |
+| **Temple Steps** | 26 m | Ring aus 12 Schrein-Säulen um eine Haupthalle, Tor | Custom, kleinere Teams |
+| **Shattered Downtown** | 55 m | Häuserblocks im Raster, Türme werden zur Mitte höher, enge Straßen | Brawl, Custom (Nahkampf) |
+| **Frozen Lake** | 32 m | Weite Eisfläche mit wenigen Bootswracks, kaum Deckung | Custom (Zoner-Paradies) |
+
+Vorschau (echte Simulation, Platzhalter-Optik): [docs/preview](preview).
 
 Gebäude haben HP. Wer mit genug Tempo hineingeschleudert wird, beschädigt sie. Bei 0 HP brechen sie
 zusammen und man fliegt durch. Projektile beschädigen sie ebenfalls.
@@ -43,4 +48,4 @@ zusammen und man fliegt durch. Projektile beschädigen sie ebenfalls.
 
 - Echte Barriere-Shader + Bodenrand
 - Gebäude als Chaos Geometry Collections (siehe [DESTRUCTION.md](DESTRUCTION.md))
-- Mehr Kolonien mit eigenem Stil (Hafen bei Nacht, Tempelbezirk, zerstörte Innenstadt)
+- Kolonien optisch ausgestalten (Bodenmaterial, Gebäude, Licht-Stimmung pro Kolonie)

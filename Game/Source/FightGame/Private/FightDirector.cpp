@@ -34,6 +34,16 @@ namespace
 		case EFightTechnique::Boundless: return &fc::techniques::boundless();
 		case EFightTechnique::CalamityFlames: return &fc::techniques::calamityFlames();
 		case EFightTechnique::ShadowPuppets: return &fc::techniques::shadowPuppets();
+		case EFightTechnique::GraniteCannon: return &fc::techniques::graniteCannon();
+		case EFightTechnique::SkyWeave: return &fc::techniques::skyWeave();
+		case EFightTechnique::ThunderVessel: return &fc::techniques::thunderVessel();
+		case EFightTechnique::StarMass: return &fc::techniques::starMass();
+		case EFightTechnique::BlossomDraw: return &fc::techniques::blossomDraw();
+		case EFightTechnique::SpiritHoard: return &fc::techniques::spiritHoard();
+		case EFightTechnique::Jackpot: return &fc::techniques::jackpot();
+		case EFightTechnique::StrawEffigy: return &fc::techniques::strawEffigy();
+		case EFightTechnique::PuppetPilot: return &fc::techniques::puppetPilot();
+		case EFightTechnique::LightMalice: return &fc::techniques::lightMalice();
 		default: return nullptr;
 		}
 	}
@@ -55,6 +65,9 @@ namespace
 		{
 		case EFightMap::ShrineWard: return &fc::maps::shrineWard();
 		case EFightMap::HarborDistrict: return &fc::maps::harborDistrict();
+		case EFightMap::TempleSteps: return &fc::maps::templeSteps();
+		case EFightMap::ShatteredDowntown: return &fc::maps::shatteredDowntown();
+		case EFightMap::FrozenLake: return &fc::maps::frozenLake();
 		default: return &fc::maps::oldCapital();
 		}
 	}
@@ -91,7 +104,8 @@ namespace
 	void FillLoadout(fc::Loadout& Out, const FFightLoadout& In)
 	{
 		Out.body = BodyOf(In.Body);
-		Out.technique = In.Body == EFightBody::HeavensBind ? nullptr : TechniqueOf(In.Technique);
+		// Heaven's Bind has no technique slot, it always fights with the tool arsenal
+		Out.technique = In.Body == EFightBody::HeavensBind ? &fc::techniques::toolArsenal() : TechniqueOf(In.Technique);
 		Out.assist = AssistOf(In.Assist);
 		Out.team = static_cast<uint8_t>(FMath::Clamp(In.Team, 0, fc::kMaxTeams - 1));
 	}

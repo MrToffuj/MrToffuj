@@ -26,7 +26,12 @@ MatchSetup buildMatch(GameMode mode, const ModeRules& rules, const Loadout* huma
 
     const BodyDef* bodyPool[] = {&bodies::heavy(), &bodies::speedster(), &bodies::caster(), &bodies::brawler(),
                                  &bodies::technician(), &bodies::summoner(), &bodies::heavensBind()};
-    const TechniqueDef* techPool[] = {&techniques::boundless(), &techniques::calamityFlames(), &techniques::shadowPuppets()};
+    const TechniqueDef* techPool[] = {&techniques::boundless(),    &techniques::calamityFlames(), &techniques::shadowPuppets(),
+                                      &techniques::graniteCannon(), &techniques::skyWeave(),       &techniques::thunderVessel(),
+                                      &techniques::starMass(),      &techniques::blossomDraw(),    &techniques::spiritHoard(),
+                                      &techniques::jackpot(),       &techniques::strawEffigy(),    &techniques::puppetPilot(),
+                                      &techniques::lightMalice()};
+    constexpr int kTechCount = static_cast<int>(sizeof(techPool) / sizeof(techPool[0]));
     const CompanionDef* assistPool[] = {&companions::bladeWolf(), &companions::sparkOwl(), &companions::vineToad(),
                                         &companions::stoneWarden()};
 
@@ -48,7 +53,7 @@ MatchSetup buildMatch(GameMode mode, const ModeRules& rules, const Loadout* huma
         l.bot = true;
         l.botLevel = botLevel;
         l.body = bodyPool[next(rng) % 7];
-        l.technique = l.body->has(PassiveHeavensBind) ? nullptr : techPool[next(rng) % 3];
+        l.technique = l.body->has(PassiveHeavensBind) ? &techniques::toolArsenal() : techPool[next(rng) % kTechCount];
         l.assist = assistPool[next(rng) % 4];
         if (teams > 0) {
             int smallest = 0;

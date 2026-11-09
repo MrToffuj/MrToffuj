@@ -44,6 +44,7 @@ struct MoveDef {
     int16_t invulnLast = -1;
     bool armored = false;  // only matters for bodies with super armor
     bool usableInStun = false;
+    bool isCounter = false;  // counter hits can't be countered again
 
     int16_t total() const { return static_cast<int16_t>(startup + active + recovery); }
     bool isActiveFrame(int16_t f) const { return f >= startup && f < startup + active; }
