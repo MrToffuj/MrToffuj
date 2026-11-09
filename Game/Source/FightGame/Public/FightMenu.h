@@ -139,6 +139,9 @@ private:
 	FFightMenuPage GraphicsPage();
 	FFightMenuPage AudioPage();
 	FFightMenuPage ControlsPage();
+	FFightMenuPage ControllerTestPage();
+	void OpenControllerTest();
+	void CloseControllerTest();
 	FFightMenuPage OnlinePage();
 	FFightMenuPage QuitPage();
 	FFightMenuPage CharacterPage(int32 Player);
@@ -167,4 +170,5 @@ private:
 	bool bPendingOnline = false;
 	FString PartyCodeInput;
 	TArray<FIntPoint> Resolutions;
+	TSharedPtr<class FFightPadTester> PadTester; // only while the controller test is open
 };

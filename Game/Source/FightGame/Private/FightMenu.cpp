@@ -6,6 +6,7 @@
 #include "FightDirector.h"
 #include "FightOnline.h"
 #include "FightUserSettings.h"
+#include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformApplicationMisc.h"
@@ -25,6 +26,55 @@
 #include "fightcore/Technique.h"
 
 #define LOCTEXT_NAMESPACE "FightMenu"
+
+// Watches all input before the menu sees it: remembers which pad buttons are held and where
+// the sticks are, and swallows pad input so pressing Circle doesn't leave the page.
+class FFightPadTester : public IInputProcessor
+{
+public:
+	TSet<FKey> Down;
+	FVector2D LeftStick = FVector2D::ZeroVector;
+	FVector2D RightStick = FVector2D::ZeroVector;
+	FKey Last;
+	bool bLeave = false;
+
+	virtual void Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor) override {}
+
+	virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& Event) override
+	{
+		const FKey Key = Event.GetKey();
+		// Options or Esc leave the test, everything else on the pad is just shown
+		if (Key == EKeys::Gamepad_Special_Right || Key == EKeys::Escape)
+		{
+			bLeave = true;
+			return true;
+		}
+		if (!Key.IsGamepadKey()) return false;
+		if (!Event.IsRepeat()) Last = Key;
+		Down.Add(Key);
+		return true;
+	}
+
+	virtual bool HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEvent& Event) override
+	{
+		Down.Remove(Event.GetKey());
+		return Event.GetKey().IsGamepadKey();
+	}
+
+	virtual bool HandleAnalogInputEvent(FSlateApplication& SlateApp, const FAnalogInputEvent& Event) override
+	{
+		const FKey Key = Event.GetKey();
+		const float V = Event.GetAnalogValue();
+		if (Key == EKeys::Gamepad_LeftX) LeftStick.X = V;
+		else if (Key == EKeys::Gamepad_LeftY) LeftStick.Y = V;
+		else if (Key == EKeys::Gamepad_RightX) RightStick.X = V;
+		else if (Key == EKeys::Gamepad_RightY) RightStick.Y = V;
+		return Key.IsGamepadKey();
+	}
+
+	virtual const TCHAR* GetDebugName() const override { return TEXT("FightPadTester"); }
+};
+
 
 namespace
 {
@@ -412,6 +462,7 @@ FFightMenus::FFightMenus(UWorld* InWorld, ERoot InRoot) : World(InWorld), Root(I
 
 FFightMenus::~FFightMenus()
 {
+	CloseControllerTest();
 	Close();
 }
 
@@ -494,6 +545,12 @@ void FFightMenus::Refresh()
 void FFightMenus::Tick(float DeltaSeconds)
 {
 	if (!bOpen) return;
+
+	if (PadTester && PadTester->bLeave)
+	{
+		CloseControllerTest();
+		Pop();
+	}
 
 	// If the game viewport grabbed focus (a click, alt-tab, a controller waking up), give it back
 	// to the menu. Only from the viewport, so editor panels around a PIE window stay usable.
@@ -892,6 +949,7 @@ FFightMenuPage FFightMenus::ControlsPage()
 		[] { return User().bInvertCameraX; }, [](bool B) { User().bInvertCameraX = B; Commit(); }));
 	P.Items.Add(FFightMenuItem::Toggle(LOCTEXT("Vibration", "Vibration"),
 		[] { return User().bVibration; }, [](bool B) { User().bVibration = B; Commit(); }));
+	P.Items.Add(FFightMenuItem::Button(LOCTEXT("TestPad", "Test controller  -  see what each button does"), [this] { OpenControllerTest(); }));
 	P.Items.Add(FFightMenuItem::Info(LOCTEXT("Remap", "Button remapping comes later. For now: Project Settings > Game > Fight Game.")));
 	P.Items.Add(FFightMenuItem::Button(LOCTEXT("Back", "Back"), [this] { Pop(); }));
 	return P;
@@ -1158,6 +1216,102 @@ FFightMenuPage FFightMenus::LobbyPage()
 	return P;
 }
 
+// ---------------------------------------------------------------- controller test
+
+namespace
+{
+	// PlayStation names, the bindings are stored by position like an Xbox pad
+	FString PadName(const FKey& Key)
+	{
+		if (Key == EKeys::Gamepad_FaceButton_Bottom) return TEXT("Cross (X)");
+		if (Key == EKeys::Gamepad_FaceButton_Right) return TEXT("Circle (O)");
+		if (Key == EKeys::Gamepad_FaceButton_Left) return TEXT("Square");
+		if (Key == EKeys::Gamepad_FaceButton_Top) return TEXT("Triangle");
+		if (Key == EKeys::Gamepad_LeftShoulder) return TEXT("L1");
+		if (Key == EKeys::Gamepad_RightShoulder) return TEXT("R1");
+		if (Key == EKeys::Gamepad_LeftTrigger) return TEXT("L2");
+		if (Key == EKeys::Gamepad_RightTrigger) return TEXT("R2");
+		if (Key == EKeys::Gamepad_LeftThumbstick) return TEXT("L3 (press left stick)");
+		if (Key == EKeys::Gamepad_RightThumbstick) return TEXT("R3 (press right stick)");
+		if (Key == EKeys::Gamepad_Special_Left) return TEXT("Create");
+		if (Key == EKeys::Gamepad_Special_Right) return TEXT("Options");
+		if (Key == EKeys::Gamepad_DPad_Up) return TEXT("D-pad up");
+		if (Key == EKeys::Gamepad_DPad_Down) return TEXT("D-pad down");
+		if (Key == EKeys::Gamepad_DPad_Left) return TEXT("D-pad left");
+		if (Key == EKeys::Gamepad_DPad_Right) return TEXT("D-pad right");
+		return Key.GetDisplayName().ToString();
+	}
+}
+
+void FFightMenus::OpenControllerTest()
+{
+	CloseControllerTest();
+	PadTester = MakeShared<FFightPadTester>();
+	FSlateApplication::Get().RegisterInputPreProcessor(PadTester);
+	Push([this] { return ControllerTestPage(); });
+}
+
+void FFightMenus::CloseControllerTest()
+{
+	if (!PadTester) return;
+	if (FSlateApplication::IsInitialized()) FSlateApplication::Get().UnregisterInputPreProcessor(PadTester);
+	PadTester.Reset();
+}
+
+FFightMenuPage FFightMenus::ControllerTestPage()
+{
+	struct FAction
+	{
+		const TCHAR* Name;
+		TArray<FKey> FFightBindings::*Keys;
+	};
+	static const FAction Actions[] = {
+		{ TEXT("Light attack"), &FFightBindings::Light },
+		{ TEXT("Heavy attack"), &FFightBindings::Heavy },
+		{ TEXT("Grab"), &FFightBindings::Grab },
+		{ TEXT("Jump"), &FFightBindings::Jump },
+		{ TEXT("Guard / parry"), &FFightBindings::Guard },
+		{ TEXT("Dash"), &FFightBindings::Dash },
+		{ TEXT("Mod (technique skills)"), &FFightBindings::Mod },
+		{ TEXT("Ult (Max Output / Realm)"), &FFightBindings::Ult },
+		{ TEXT("Assist (familiar)"), &FFightBindings::Assist },
+		{ TEXT("Lock-on on / off"), &FFightBindings::Target },
+	};
+
+	FFightMenuPage P;
+	P.Title = LOCTEXT("PadTitle", "Controller");
+	P.Subtitle = TAttribute<FText>::CreateLambda([this]
+	{
+		const FString Last = PadTester && PadTester->Last.IsValid() ? PadName(PadTester->Last) : FString(TEXT("nothing yet"));
+		return FText::FromString(FString::Printf(TEXT("Press any button. Last pressed: %s        Options / Esc leaves"), *Last));
+	});
+	P.OnBack = [this] { CloseControllerTest(); Pop(); };
+
+	const FFightBindings& Pad = GetDefault<UFightGameSettings>()->Gamepad;
+	for (const FAction& Action : Actions)
+	{
+		const TArray<FKey> Keys = Pad.*Action.Keys;
+		FString Names;
+		for (const FKey& Key : Keys) Names += (Names.IsEmpty() ? TEXT("") : TEXT(" / ")) + PadName(Key);
+		const FString Line = FString::Printf(TEXT("%s:   %s"), Action.Name, Names.IsEmpty() ? TEXT("-") : *Names);
+		P.Items.Add(FFightMenuItem::Info(TAttribute<FText>::CreateLambda([this, Keys, Line]
+		{
+			bool bHeld = false;
+			for (const FKey& Key : Keys) bHeld |= PadTester && PadTester->Down.Contains(Key);
+			return FText::FromString((bHeld ? TEXT(">>  ") : TEXT("      ")) + Line);
+		})));
+	}
+	P.Items.Add(FFightMenuItem::Info(LOCTEXT("PadMove", "      Move:   left stick or d-pad        Camera (without lock-on):   right stick        Pause:   Options")));
+	P.Items.Add(FFightMenuItem::Info(TAttribute<FText>::CreateLambda([this]
+	{
+		const FVector2D L = PadTester ? PadTester->LeftStick : FVector2D::ZeroVector;
+		const FVector2D R = PadTester ? PadTester->RightStick : FVector2D::ZeroVector;
+		return FText::FromString(FString::Printf(TEXT("      Left stick  %+.2f  %+.2f        Right stick  %+.2f  %+.2f"), L.X, L.Y, R.X, R.Y));
+	})));
+	P.Items.Add(FFightMenuItem::Button(LOCTEXT("Back", "Back"), [this] { CloseControllerTest(); Pop(); }));
+	return P;
+}
+
 FFightMenuPage FFightMenus::PausePage()
 {
 	FFightMenuPage P;
@@ -1167,6 +1321,7 @@ FFightMenuPage FFightMenus::PausePage()
 	P.OnBack = [this] { Close(); };
 	P.Items.Add(FFightMenuItem::Button(LOCTEXT("Resume", "Resume"), [this] { Close(); }));
 	P.Items.Add(FFightMenuItem::Button(LOCTEXT("Settings", "Settings"), [this] { Push([this] { return SettingsPage(); }); }));
+	P.Items.Add(FFightMenuItem::Button(LOCTEXT("PauseControls", "Controls  -  which button does what"), [this] { OpenControllerTest(); }));
 	P.Items.Add(FFightMenuItem::Button(LOCTEXT("LeaveMatch", "Leave match"), [this] { if (UFightOnline* O = Online()) O->ReturnToMenu(); }));
 	return P;
 }
