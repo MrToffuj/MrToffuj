@@ -99,7 +99,7 @@ private:
 	void PollLobby(float DeltaSeconds);
 	bool BeginOnlineMatch(const fc::net::LobbyConfig& Config, uint8 LocalPeer);
 	void SimulateOnlineFrame();
-	fc::FrameInput BuildInput(int32 LocalIndex) const;
+	fc::FrameInput BuildInput(int32 LocalIndex);
 	void Rematch();
 	void SpawnArena();
 	void SpawnFighterVisuals();

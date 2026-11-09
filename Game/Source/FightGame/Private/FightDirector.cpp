@@ -227,9 +227,13 @@ void AFightDirector::LoadMods()
 		const FTCHARToUTF8 Utf8(*Text);
 		std::string Error;
 		if (fc::Registry::instance().loadMod(std::string_view(Utf8.Get(), Utf8.Length()), &Error))
+		{
 			UE_LOG(LogFight, Log, TEXT("Loaded mod %s"), *File);
+		}
 		else
+		{
 			UE_LOG(LogFight, Warning, TEXT("Skipped mod %s: %s"), *File, UTF8_TO_TCHAR(Error.c_str()));
+		}
 	}
 }
 
@@ -463,7 +467,7 @@ void AFightDirector::SimulateFrame()
 	}
 }
 
-fc::FrameInput AFightDirector::BuildInput(int32 LocalIndex) const
+fc::FrameInput AFightDirector::BuildInput(int32 LocalIndex)
 {
 	// the player who opened the pause menu stands still, everyone else keeps fighting
 	if (bMenuOpen && LocalIndex == 0) return fc::FrameInput{};

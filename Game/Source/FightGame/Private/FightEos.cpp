@@ -240,14 +240,11 @@ void FFightEosPlatform::Begin(const FConfig& Config)
 		Fail(TEXT("the EOSShared plugin isn't loaded"));
 		return;
 	}
+	// the EOSShared module initializes the SDK itself when it starts up
 	if (!Sdk->IsInitialized())
 	{
-		const EOS_EResult Init = Sdk->Initialize();
-		if (Init != EOS_EResult::EOS_Success && Init != EOS_EResult::EOS_AlreadyConfigured)
-		{
-			Fail(FString::Printf(TEXT("SDK init failed (%s)"), *ResultText(Init)));
-			return;
-		}
+		Fail(TEXT("the EOS SDK didn't start, check that the EOSShared plugin is enabled"));
+		return;
 	}
 
 	ProductId = Utf8(Config.ProductId);

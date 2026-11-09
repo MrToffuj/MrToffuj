@@ -1513,7 +1513,7 @@ uint64_t hashState(const MatchState& m) {
         x.addInt(f.healed);
         for (int16_t c : f.cooldown) x.addInt(c);
         x.addInt(static_cast<int>(f.state)); x.addInt(f.armorLeft);
-        x.addInt(f.moveHasHit | (f.grounded << 1) | (f.launched << 2) | (f.reinforce << 3) | (f.maxOutputUsed << 4) |
+        x.addInt(static_cast<int>(f.moveHasHit) | (f.grounded << 1) | (f.launched << 2) | (f.reinforce << 3) | (f.maxOutputUsed << 4) |
                  (f.manualTarget << 5) | (f.out << 6) | (f.lockOn << 7));
         x.addInt(f.spawnFrame);
         x.h = f.input.hash(x.h);
@@ -1523,7 +1523,7 @@ uint64_t hashState(const MatchState& m) {
         x.addInt(f.realm.timer); x.addInt(f.realm.open); x.add(f.realm.center); x.addInt(f.realm.clashWith);
         x.addInt(f.realm.clashTimer); x.addInt(f.realm.clashCount);
         for (const CompanionState& c : f.comp) {
-            x.addInt(c.roster); x.addInt(c.action); x.addInt(c.link | (c.hasHit << 1)); x.addInt(c.hp);
+            x.addInt(c.roster); x.addInt(c.action); x.addInt(static_cast<int>(c.link) | (c.hasHit << 1)); x.addInt(c.hp);
             x.addInt(c.actionFrame); x.addInt(c.cooldown); x.addInt(c.down); x.addInt(c.lock); x.addInt(c.expires);
             x.addInt(c.since); x.addInt(c.adapted); x.add(c.pos); x.add(c.facing);
         }
