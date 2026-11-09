@@ -16,6 +16,7 @@ struct FFightMatchRequest
 	FFightCustomRules Custom;
 	int32 LocalPlayers = 1;
 	EFightNetMode Net = EFightNetMode::Offline;
+	TArray<FFightLoadout> Loadouts; // one per local player, from the character select
 	FString JoinCode;      // lobby code (EOS) or host address (direct IP)
 	bool bForParty = false; // party leader: tell the party where the match is
 };

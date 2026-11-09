@@ -30,8 +30,13 @@ Maus geht auch.
 ```
 Title ─┬─ Play ─┬─ 1v1 / 2v2 / Brawl / Custom ─┬─ Players on this console (1–4)
        │        │                              ├─ Rules (nur Custom)
-       │        │                              ├─ Offline – lokale Spieler + Bots
-       │        │                              └─ Online – Quick Match (bzw. mit Party)
+       │        │                              ├─ Offline – lokale Spieler + Bots ─┐
+       │        │                              └─ Online – Quick Match / Party ────┤
+       │        │                                                                  ▼
+       │        │        Charakterauswahl (je Spieler an der Konsole):
+       │        │        Body (mit Stats), Technik (inkl. Mods), Familiar (Summoner),
+       │        │        Team (wenn der Modus Teams hat), Cursed Objects (so viele wie erlaubt),
+       │        │        Körpertyp → Ready → nächster Spieler bzw. Fight
        │        └─ Play with a friend ── Code erstellen / Code eingeben / Party verlassen
        ├─ Settings ─┬─ Display   Fenstermodus, Auflösung, V-Sync, FPS-Limit, Render-Scale, Apply
        │            ├─ Graphics  Preset, 8 Einzelwerte, automatisch erkennen

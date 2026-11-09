@@ -248,7 +248,7 @@ void AFightDirector::BuildSession()
 
 	fc::Loadout Humans[MaxLocalPlayers];
 	for (int32 i = 0; i < LocalPlayers; ++i)
-		FillLoadout(Humans[i], S->Loadouts.IsValidIndex(i) ? S->Loadouts[i] : FFightLoadout());
+		FillLoadout(Humans[i], LoadoutOf(i));
 
 	const fc::MatchSetup Setup = fc::buildMatch(Mode, Rules, Humans, LocalPlayers, static_cast<uint8_t>(S->BotLevel),
 		static_cast<uint32_t>(FMath::Rand()));
@@ -276,11 +276,10 @@ void AFightDirector::RestartMatch()
 
 void AFightDirector::ApplyAppearances()
 {
-	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
 	// outfits are cosmetic and stay on this console, remote players show their default look
 	for (int32 i = 0; i < LocalPlayers; ++i)
-		if (FighterVisuals.IsValidIndex(LocalFighters[i]) && S->Loadouts.IsValidIndex(i))
-			UFightAppearance::Apply(FighterVisuals[LocalFighters[i]], S->Loadouts[i]);
+		if (FighterVisuals.IsValidIndex(LocalFighters[i]))
+			UFightAppearance::Apply(FighterVisuals[LocalFighters[i]], LoadoutOf(i));
 }
 
 void AFightDirector::RecordMatchResult(const fc::MatchState& State)
@@ -465,6 +464,21 @@ void AFightDirector::SimulateFrame()
 		}
 		if (++RoundOverFrames >= S->RestartDelayFrames) RestartMatch();
 	}
+}
+
+FString AFightDirector::TechniqueIdOf(const FFightLoadout& Loadout)
+{
+	fc::Loadout L;
+	FillLoadout(L, Loadout);
+	return L.technique ? FString(UTF8_TO_TCHAR(L.technique->id)) : FString();
+}
+
+FFightLoadout AFightDirector::LoadoutOf(int32 LocalIndex) const
+{
+	// the character select's pick, else whatever the project settings say
+	if (Request.Loadouts.IsValidIndex(LocalIndex)) return Request.Loadouts[LocalIndex];
+	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
+	return S->Loadouts.IsValidIndex(LocalIndex) ? S->Loadouts[LocalIndex] : FFightLoadout();
 }
 
 fc::FrameInput AFightDirector::BuildInput(int32 LocalIndex)
@@ -749,7 +763,7 @@ void AFightDirector::StartOnline()
 	LocalPlayers = FMath::Clamp(Request.LocalPlayers, 1, MaxLocalPlayers);
 	std::vector<fc::net::PlayerRequest> Requests;
 	for (int32 i = 0; i < LocalPlayers; ++i)
-		Requests.push_back(ToRequest(S->Loadouts.IsValidIndex(i) ? S->Loadouts[i] : FFightLoadout()));
+		Requests.push_back(ToRequest(LoadoutOf(i)));
 	LobbyTime = 0.f;
 	WaitSeconds = 0.f;
 

@@ -141,10 +141,13 @@ private:
 	FFightMenuPage ControlsPage();
 	FFightMenuPage OnlinePage();
 	FFightMenuPage QuitPage();
+	FFightMenuPage CharacterPage(int32 Player);
 	FFightMenuPage LobbyPage();
 	FFightMenuPage PausePage();
 
 	void StartMatch(int32 Mode, bool bOnline);
+	// after offline / online: everyone on this console picks a fighter, then the match starts
+	void PickCharacters(int32 Mode, bool bOnline);
 	UFightOnline* Online() const;
 
 	TWeakObjectPtr<UWorld> World;
@@ -159,6 +162,9 @@ private:
 	// menu choices that only matter until the match starts
 	int32 LocalPlayers = 1;
 	FFightCustomRules Custom;
+	TArray<FFightLoadout> Picks;
+	int32 PendingMode = 0;
+	bool bPendingOnline = false;
 	FString PartyCodeInput;
 	TArray<FIntPoint> Resolutions;
 };

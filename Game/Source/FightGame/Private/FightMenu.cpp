@@ -18,6 +18,11 @@
 #include "Widgets/SViewport.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "fightcore/Body.h"
+#include "fightcore/CursedObject.h"
+#include "fightcore/Registry.h"
+#include "fightcore/Simulation.h"
+#include "fightcore/Technique.h"
 
 #define LOCTEXT_NAMESPACE "FightMenu"
 
@@ -397,8 +402,12 @@ FReply SFightMenu::OnFocusReceived(const FGeometry& Geometry, const FFocusEvent&
 
 FFightMenus::FFightMenus(UWorld* InWorld, ERoot InRoot) : World(InWorld), Root(InRoot)
 {
-	Custom = GetDefault<UFightGameSettings>()->Custom;
-	LocalPlayers = FMath::Clamp(GetDefault<UFightGameSettings>()->LocalPlayers, 1, 4);
+	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
+	Custom = S->Custom;
+	LocalPlayers = FMath::Clamp(S->LocalPlayers, 1, 4);
+	// start the character select where everyone left off
+	Picks = User().LastLoadouts;
+	for (int32 i = Picks.Num(); i < 4; ++i) Picks.Add(S->Loadouts.IsValidIndex(i) ? S->Loadouts[i] : FFightLoadout());
 }
 
 FFightMenus::~FFightMenus()
@@ -507,6 +516,7 @@ void FFightMenus::Tick(float DeltaSeconds)
 		Request.Mode = Mode;
 		Request.Custom = Custom;
 		Request.LocalPlayers = LocalPlayers;
+		Request.Loadouts = Picks;
 		Request.Net = EFightNetMode::Join;
 		Request.JoinCode = Code;
 		O->StartMatch(Request);
@@ -530,6 +540,9 @@ void FFightMenus::StartMatch(int32 Mode, bool bOnline)
 	Request.Mode = static_cast<EFightMode>(Mode);
 	Request.Custom = Custom;
 	Request.LocalPlayers = LocalPlayers;
+	Request.Loadouts = Picks;
+	User().LastLoadouts = Picks;
+	User().SaveSettings();
 	if (!bOnline)
 	{
 		Request.Net = EFightNetMode::Offline;
@@ -614,12 +627,12 @@ FFightMenuPage FFightMenus::ModePage(int32 Mode)
 	if (Mode == static_cast<int32>(EFightMode::Custom))
 		P.Items.Add(FFightMenuItem::Button(LOCTEXT("Rules", "Rules"), [this] { Push([this] { return CustomRulesPage(); }); }));
 
-	P.Items.Add(FFightMenuItem::Button(LOCTEXT("Offline", "Offline  -  local players and bots"), [this, Mode] { StartMatch(Mode, false); }));
+	P.Items.Add(FFightMenuItem::Button(LOCTEXT("Offline", "Offline  -  local players and bots"), [this, Mode] { PickCharacters(Mode, false); }));
 	const UFightOnline* O = Online();
 	const FText OnlineLabel = O && O->IsPartyLeader()
 		? LOCTEXT("OnlineParty", "Online  -  with your party")
 		: LOCTEXT("Online", "Online  -  find players");
-	P.Items.Add(FFightMenuItem::Button(OnlineLabel, [this, Mode] { StartMatch(Mode, true); }));
+	P.Items.Add(FFightMenuItem::Button(OnlineLabel, [this, Mode] { PickCharacters(Mode, true); }));
 	P.Items.Add(FFightMenuItem::Button(LOCTEXT("Back", "Back"), [this] { Pop(); }));
 	return P;
 }
@@ -904,6 +917,190 @@ FFightMenuPage FFightMenus::OnlinePage()
 	P.Items.Add(FFightMenuItem::Info(LOCTEXT("DelayHint", "More delay = fewer corrections on a bad connection. 2 is a good start.")));
 	P.Items.Add(FFightMenuItem::Toggle(LOCTEXT("FrameInfo", "Show frame and rollback counter"),
 		[] { return User().bShowFrameInfo; }, [](bool B) { User().bShowFrameInfo = B; User().SaveSettings(); }));
+	P.Items.Add(FFightMenuItem::Button(LOCTEXT("Back", "Back"), [this] { Pop(); }));
+	return P;
+}
+
+// ---------------------------------------------------------------- character select
+
+namespace
+{
+	struct FBodyInfo
+	{
+		EFightBody Body;
+		const fc::BodyDef& (*Def)();
+		const TCHAR* About;
+	};
+
+	const TArray<FBodyInfo>& Bodies()
+	{
+		static const TArray<FBodyInfo> List = {
+			{ EFightBody::Brawler, &fc::bodies::brawler, TEXT("All-rounder. Good at everything, best at nothing.") },
+			{ EFightBody::Heavy, &fc::bodies::heavy, TEXT("Tanky and hits hard, slow on its feet.") },
+			{ EFightBody::Speedster, &fc::bodies::speedster, TEXT("Fast and slippery, can't take much.") },
+			{ EFightBody::Caster, &fc::bodies::caster, TEXT("Huge CE pool, built around the technique.") },
+			{ EFightBody::Technician, &fc::bodies::technician, TEXT("Long reach and precise, rewards spacing.") },
+			{ EFightBody::Summoner, &fc::bodies::summoner, TEXT("Fights together with a familiar.") },
+			{ EFightBody::HeavensBind, &fc::bodies::heavensBind, TEXT("No CE at all. A monster body with cursed tools instead.") },
+		};
+		return List;
+	}
+
+	int32 BodyIndex(EFightBody Body)
+	{
+		return FMath::Max(0, Bodies().IndexOfByPredicate([Body](const FBodyInfo& B) { return B.Body == Body; }));
+	}
+
+	FString Pips(int32 Value)
+	{
+		FString Out;
+		for (int32 i = 0; i < 4; ++i) Out += i < Value ? TEXT("#") : TEXT("-");
+		return Out;
+	}
+
+	// techniques a player can pick: everything loaded, mods included, minus the Heaven's Bind tools
+	TArray<const fc::TechniqueDef*> PickableTechniques()
+	{
+		TArray<const fc::TechniqueDef*> Out;
+		for (const fc::TechniqueDef* T : fc::Registry::instance().techniques())
+			if (T && !T->ceFree) Out.Add(T);
+		return Out;
+	}
+
+	fc::GameMode CoreMode(int32 Mode)
+	{
+		switch (static_cast<EFightMode>(Mode))
+		{
+		case EFightMode::Teams: return fc::GameMode::Teams;
+		case EFightMode::Brawl: return fc::GameMode::Brawl;
+		case EFightMode::Custom: return fc::GameMode::Custom;
+		default: return fc::GameMode::Duel;
+		}
+	}
+}
+
+void FFightMenus::PickCharacters(int32 Mode, bool bOnline)
+{
+	AFightDirector::LoadMods(); // modded techniques and cursed objects belong in the lists
+	PendingMode = Mode;
+	bPendingOnline = bOnline;
+	Push([this] { return CharacterPage(0); });
+}
+
+FFightMenuPage FFightMenus::CharacterPage(int32 Player)
+{
+	static const TArray<FText> Assists = { LOCTEXT("BladeWolf", "Blade Wolf  (striker)"), LOCTEXT("SparkOwl", "Spark Owl  (zoner)"),
+		LOCTEXT("VineToad", "Vine Toad  (support)"), LOCTEXT("StoneWarden", "Stone Warden  (guard)") };
+
+	FFightLoadout& Pick = Picks[Player];
+	const TArray<const fc::TechniqueDef*> Techniques = PickableTechniques();
+	const bool bCustom = PendingMode == static_cast<int32>(EFightMode::Custom);
+	const int32 CursedSlots = bCustom ? Custom.CursedObjectSlots : fc::rulesFor(CoreMode(PendingMode)).cursedObjectSlots;
+	const int32 Teams = bCustom ? Custom.Teams : fc::rulesFor(CoreMode(PendingMode)).teamCount;
+
+	FFightMenuPage P;
+	P.Title = LocalPlayers > 1 ? FText::Format(LOCTEXT("PickN", "Player {0}"), Num(Player + 1)) : LOCTEXT("PickOne", "Choose your fighter");
+	P.Subtitle = FText::Format(LOCTEXT("PickMode", "{0}  -  {1}"), ModeNames()[PendingMode],
+		bPendingOnline ? LOCTEXT("PickOnline", "online") : LOCTEXT("PickOffline", "offline"));
+	P.OnBack = [this] { Pop(); };
+
+	// body
+	TArray<FText> BodyNames;
+	for (const FBodyInfo& B : Bodies()) BodyNames.Add(FText::FromString(UTF8_TO_TCHAR(B.Def().name)));
+	P.Items.Add(FFightMenuItem::Choice(LOCTEXT("Body", "Body"), BodyNames,
+		[&Pick] { return BodyIndex(Pick.Body); },
+		[this, &Pick](int32 I)
+		{
+			Pick.Body = Bodies()[I].Body;
+			Refresh(); // Heaven's Bind and Summoner change which lines exist
+		}));
+	P.Items.Add(FFightMenuItem::Info(TAttribute<FText>::CreateLambda([&Pick]
+	{
+		const FBodyInfo& B = Bodies()[BodyIndex(Pick.Body)];
+		const fc::BodyDef& D = B.Def();
+		return FText::FromString(FString::Printf(TEXT("%s\nHP %s   Speed %s   CE %s   Range %s"),
+			B.About, *Pips(D.hp), *Pips(D.speed), *Pips(D.ce), *Pips(D.range)));
+	})));
+
+	// technique
+	if (Pick.Body == EFightBody::HeavensBind)
+	{
+		P.Items.Add(FFightMenuItem::Info(LOCTEXT("ToolsOnly", "Technique: Tool Arsenal  -  Heaven's Bind fights with cursed tools, no technique.")));
+	}
+	else if (Techniques.Num() > 0)
+	{
+		TArray<FText> TechniqueNames;
+		for (const fc::TechniqueDef* T : Techniques) TechniqueNames.Add(FText::FromString(UTF8_TO_TCHAR(T->name)));
+		P.Items.Add(FFightMenuItem::Choice(LOCTEXT("Technique", "Technique"), TechniqueNames,
+			[&Pick, Techniques]
+			{
+				// the pick is stored by id, built-in and modded techniques alike
+				const FString Id = AFightDirector::TechniqueIdOf(Pick);
+				return FMath::Max(0, Techniques.IndexOfByPredicate([&Id](const fc::TechniqueDef* T) { return Id == UTF8_TO_TCHAR(T->id); }));
+			},
+			[&Pick, Techniques](int32 I) { Pick.ModTechnique = FName(UTF8_TO_TCHAR(Techniques[I]->id)); }));
+	}
+
+	// the summoner's familiar
+	if (Pick.Body == EFightBody::Summoner)
+		P.Items.Add(FFightMenuItem::Choice(LOCTEXT("Familiar", "Familiar"), Assists,
+			[&Pick] { return static_cast<int32>(Pick.Assist); },
+			[&Pick](int32 I) { Pick.Assist = static_cast<EFightAssist>(I); }));
+
+	// team, where the mode has teams
+	if (Teams > 1)
+	{
+		TArray<FText> TeamNames;
+		for (int32 T = 0; T < Teams; ++T) TeamNames.Add(FText::Format(LOCTEXT("TeamN", "Team {0}"), Num(T + 1)));
+		P.Items.Add(FFightMenuItem::Choice(LOCTEXT("Team", "Team"), TeamNames,
+			[&Pick, Teams] { return FMath::Clamp(Pick.Team, 0, Teams - 1); },
+			[&Pick](int32 I) { Pick.Team = I; }));
+	}
+
+	// cursed objects, as many as the mode allows
+	TArray<const fc::CursedObjectDef*> Cursed;
+	for (const fc::CursedObjectDef* C : fc::Registry::instance().cursedObjects()) Cursed.Add(C);
+	if (CursedSlots > 0 && Cursed.Num() > 0)
+	{
+		TArray<FText> CursedNames = { LOCTEXT("NoCursed", "None") };
+		for (const fc::CursedObjectDef* C : Cursed) CursedNames.Add(FText::FromString(UTF8_TO_TCHAR(C->name)));
+		Pick.CursedObjects.SetNum(FMath::Min(Pick.CursedObjects.Num(), CursedSlots));
+		for (int32 Slot = 0; Slot < CursedSlots; ++Slot)
+		{
+			P.Items.Add(FFightMenuItem::Choice(FText::Format(LOCTEXT("CursedSlot", "Cursed object {0}"), Num(Slot + 1)), CursedNames,
+				[&Pick, Cursed, Slot]
+				{
+					if (!Pick.CursedObjects.IsValidIndex(Slot)) return 0;
+					const FString Id = Pick.CursedObjects[Slot].ToString();
+					return 1 + Cursed.IndexOfByPredicate([&Id](const fc::CursedObjectDef* C) { return Id == UTF8_TO_TCHAR(C->id); });
+				},
+				[&Pick, Cursed, Slot](int32 I)
+				{
+					if (Pick.CursedObjects.Num() <= Slot) Pick.CursedObjects.SetNum(Slot + 1);
+					Pick.CursedObjects[Slot] = I == 0 ? NAME_None : FName(UTF8_TO_TCHAR(Cursed[I - 1]->id));
+				}));
+		}
+		P.Items.Add(FFightMenuItem::Info(TAttribute<FText>::CreateLambda([&Pick, Cursed]
+		{
+			FString Text;
+			for (const FName& Id : Pick.CursedObjects)
+				for (const fc::CursedObjectDef* C : Cursed)
+					if (!Id.IsNone() && Id.ToString() == UTF8_TO_TCHAR(C->id))
+						Text += FString::Printf(TEXT("%s: %s\n"), UTF8_TO_TCHAR(C->name), UTF8_TO_TCHAR(C->description));
+			return FText::FromString(Text.TrimEnd());
+		})));
+	}
+
+	P.Items.Add(FFightMenuItem::Choice(LOCTEXT("BodyType", "Body type"), { LOCTEXT("Male", "Male"), LOCTEXT("Female", "Female") },
+		[&Pick] { return static_cast<int32>(Pick.BodyType); },
+		[&Pick](int32 I) { Pick.BodyType = static_cast<EFightBodyType>(I); }));
+
+	const bool bLast = Player + 1 >= LocalPlayers;
+	P.Items.Add(FFightMenuItem::Button(bLast ? LOCTEXT("Fight", "Ready  -  fight!") : LOCTEXT("NextPlayer", "Ready  -  next player"), [this, Player, bLast]
+	{
+		if (bLast) StartMatch(PendingMode, bPendingOnline);
+		else Push([this, Player] { return CharacterPage(Player + 1); });
+	}));
 	P.Items.Add(FFightMenuItem::Button(LOCTEXT("Back", "Back"), [this] { Pop(); }));
 	return P;
 }

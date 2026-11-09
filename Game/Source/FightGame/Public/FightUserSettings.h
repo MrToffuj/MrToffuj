@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "FightGameSettings.h"
 #include "GameFramework/GameUserSettings.h"
 
 #include "FightUserSettings.generated.h"
@@ -34,4 +35,7 @@ public:
 	UPROPERTY(Config) FString DisplayName = TEXT("Player");
 	UPROPERTY(Config) int32 InputDelay = 2;
 	UPROPERTY(Config) bool bShowFrameInfo = false;
+
+	// what each local player picked last time, so the character select starts there
+	UPROPERTY(Config) TArray<FFightLoadout> LastLoadouts;
 };

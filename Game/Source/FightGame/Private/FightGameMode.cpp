@@ -18,6 +18,7 @@ namespace
 		R.Mode = S->Mode;
 		R.Custom = S->Custom;
 		R.LocalPlayers = S->LocalPlayers;
+		R.Loadouts = S->Loadouts;
 		R.Net = S->NetMode;
 		R.JoinCode = S->Backend == EFightNetBackend::Eos ? S->LobbyCode : S->HostAddress;
 		return R;

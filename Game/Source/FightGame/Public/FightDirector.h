@@ -88,6 +88,8 @@ public:
 	FString GetFighterLabel(int32 Fighter) const;
 	// Loads every mod.json under the mods folder once. Safe to call repeatedly.
 	static void LoadMods();
+	// The technique a loadout really fights with: the mod/id override if it exists, else the enum.
+	static FString TechniqueIdOf(const FFightLoadout& Loadout);
 	FLinearColor GetFighterColor(int32 Fighter) const;
 	FLinearColor GetTeamColor(int32 Team) const;
 
@@ -100,6 +102,7 @@ private:
 	bool BeginOnlineMatch(const fc::net::LobbyConfig& Config, uint8 LocalPeer);
 	void SimulateOnlineFrame();
 	fc::FrameInput BuildInput(int32 LocalIndex);
+	FFightLoadout LoadoutOf(int32 LocalIndex) const;
 	void Rematch();
 	void SpawnArena();
 	void SpawnFighterVisuals();
