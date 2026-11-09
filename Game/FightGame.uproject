@@ -19,6 +19,10 @@
 		{
 			"Name": "EOSShared",
 			"Enabled": true
+		},
+		{
+			"Name": "PlayStationPads",
+			"Enabled": true
 		}
 	]
 }

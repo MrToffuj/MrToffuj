@@ -1,0 +1,18 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "PlayStation Pads",
+	"Description": "DualSense and DualShock 4 on Windows over USB and Bluetooth, no extra tools needed.",
+	"Category": "Input",
+	"CanContainContent": false,
+	"EnabledByDefault": true,
+	"Modules": [
+		{
+			"Name": "PlayStationPads",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault",
+			"PlatformAllowList": [ "Win64" ]
+		}
+	]
+}

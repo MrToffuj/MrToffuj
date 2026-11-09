@@ -18,6 +18,13 @@ und ersetzt nur das Aussehen, nicht die Seiten.
 
 Maus geht auch.
 
+**PlayStation-Controller:** DualSense (auch Edge) und DualShock 4 gehen auf Windows nativ, per USB und Bluetooth.
+- Das Plugin `Game/Plugins/PlayStationPads` liest sie direkt per HID und meldet sie Unreal wie ein Xbox-Pad.
+- Die Belegung geht nach Position: ✕ unten, ○ rechts, □ links, △ oben. Options öffnet die Pause.
+- Anstecken mitten im Match geht. Bis zu 4 Pads werden erkannt.
+- DS4Windows bitte schließen, sonst kommt jede Taste doppelt an.
+- Rumble, Lightbar und adaptive Trigger kommen später.
+
 ## Seiten
 
 ```
