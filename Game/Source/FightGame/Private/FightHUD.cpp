@@ -180,7 +180,14 @@ void AFightHUD::DrawHUD()
 
 	if (!Director.IsValid())
 		for (TActorIterator<AFightDirector> It(GetWorld()); It; ++It) Director = *It;
-	if (!Director.IsValid() || !Director->HasSession()) return;
+	if (!Director.IsValid()) return;
+	const FString NetStatus = Director->GetNetStatus();
+	if (!Director->HasSession())
+	{
+		UiScale = FMath::Min(Canvas->ClipY / 1080.f, Canvas->ClipX / 960.f);
+		DrawCentered(NetStatus.IsEmpty() ? FString(TEXT("Connecting ...")) : NetStatus, Canvas->ClipY * 0.45f, FLinearColor::White, 1.4f, false);
+		return;
+	}
 
 	const fc::MatchState& State = Director->GetState();
 	const fc::MatchSetup& Setup = Director->GetSetup();
@@ -190,7 +197,7 @@ void AFightHUD::DrawHUD()
 	UiScale = FMath::Min(H / 1080.f, W / 960.f);
 	const float S = UiScale;
 
-	const int32 Self = FMath::Max(0, Director->GetPlayerIndex(PlayerOwner));
+	const int32 Self = FMath::Max(0, Director->GetPlayerFighter(PlayerOwner));
 	const fc::FighterState& Me = State.f[Self];
 
 	DrawFighterPanel(Self, false, true);
@@ -234,6 +241,8 @@ void AFightHUD::DrawHUD()
 		else Text = FString::Printf(TEXT("%s WINS"), *Director->GetFighterLabel(State.winner));
 		DrawCentered(Text, H * 0.4f, FLinearColor::White, 2.f, true);
 	}
+
+	if (!NetStatus.IsEmpty()) DrawCentered(NetStatus, H * 0.1f, FLinearColor(1.f, 0.6f, 0.3f), 1.f, false);
 
 	if (GetDefault<UFightGameSettings>()->bShowFrameInfo)
 	{

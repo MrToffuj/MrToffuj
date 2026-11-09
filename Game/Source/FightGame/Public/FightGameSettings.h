@@ -119,6 +119,19 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Camera", meta = (ClampMin = "30", ClampMax = "720"))
 	float CameraTurnSpeed = 200.f;
 
+	// Peer to peer. No dedicated servers: the host only collects players and starts the
+	// match, after that every console talks to every other one directly.
+	UPROPERTY(Config, EditAnywhere, Category = "Online") EFightNetMode NetMode = EFightNetMode::Offline;
+	// Join only. "192.168.0.12:7777"
+	UPROPERTY(Config, EditAnywhere, Category = "Online") FString HostAddress = TEXT("127.0.0.1:7777");
+	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "1024", ClampMax = "65535")) int32 Port = 7777;
+	// Host only: start once this many consoles (host included) are in, bots take the rest.
+	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "1", ClampMax = "20")) int32 WaitForConsoles = 2;
+	// Host only: start anyway after this long, 0 waits forever.
+	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "0")) float LobbyTimeoutSeconds = 60.f;
+	// Frames between pressing and seeing it happen. 2 hides most rollbacks on a normal connection.
+	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "0", ClampMax = "6")) int32 InputDelay = 2;
+
 	// Folder (relative to the project) that is scanned for */mod.json at startup
 	UPROPERTY(Config, EditAnywhere, Category = "Mods") FString ModsFolder = TEXT("Mods");
 

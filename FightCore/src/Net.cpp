@@ -337,6 +337,12 @@ int LobbyHost::peerCount() const {
     return n;
 }
 
+void LobbyHost::resendStart() {
+    if (startBody_.empty()) return;
+    for (size_t p = 1; p < peers_.size(); ++p)
+        if (!peers_[p].empty()) sendStart(static_cast<uint8_t>(p));
+}
+
 void LobbyHost::sendStart(uint8_t peer) {
     std::vector<uint8_t> packet{kStart, peer};
     packet.insert(packet.end(), startBody_.begin(), startBody_.end());

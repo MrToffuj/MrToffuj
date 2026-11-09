@@ -90,6 +90,7 @@ namespace
 	}
 
 	std::string ToStd(const FName& Name) { return std::string(TCHAR_TO_UTF8(*Name.ToString())); }
+	std::string ToStd(const FString& Text) { return std::string(TCHAR_TO_UTF8(*Text)); }
 
 	fc::ModeRules ToRules(const UFightGameSettings& S)
 	{
@@ -125,6 +126,24 @@ namespace
 			if (const fc::TechniqueDef* Modded = Reg.technique(ToStd(In.ModTechnique))) Out.technique = Modded;
 		for (int32 k = 0; k < FMath::Min(In.CursedObjects.Num(), fc::kMaxCursedObjects); ++k)
 			Out.cursed[k] = Reg.cursedObject(ToStd(In.CursedObjects[k]));
+	}
+
+	// What a console asks the host for. The host turns it back into a loadout the same way
+	// on every peer, so only names travel, never pointers.
+	fc::net::PlayerRequest ToRequest(const FFightLoadout& In)
+	{
+		fc::Loadout L;
+		FillLoadout(L, In);
+		fc::net::PlayerRequest R;
+		R.body = L.body->name;
+		R.technique = L.technique ? L.technique->id : "";
+		R.assist = L.assist ? L.assist->name : "";
+		R.team = L.team;
+		R.oath = L.oath;
+		R.profile = L.profile;
+		for (const fc::CursedObjectDef* C : L.cursed)
+			if (C) R.cursed.emplace_back(C->id);
+		return R;
 	}
 
 	FLinearColor CompanionColor(fc::CompanionType T)
@@ -172,7 +191,18 @@ AFightDirector::AFightDirector()
 void AFightDirector::BeginPlay()
 {
 	Super::BeginPlay();
+	NetMode = GetDefault<UFightGameSettings>()->NetMode;
+	if (IsOnline())
+	{
+		StartOnline(); // the arena shows up once the lobby is done
+		return;
+	}
 	BuildSession();
+	StartPresentation();
+}
+
+void AFightDirector::StartPresentation()
+{
 	SpawnArena();
 	SpawnFighterVisuals();
 	ApplyAppearances();
@@ -208,6 +238,7 @@ void AFightDirector::BuildSession()
 	const fc::GameMode Mode = ToMode(S->Mode);
 	const fc::ModeRules Rules = ToRules(*S);
 	LocalPlayers = FMath::Clamp(S->LocalPlayers, 1, FMath::Min<int32>(MaxLocalPlayers, Rules.fighters));
+	for (int32 i = 0; i < MaxLocalPlayers; ++i) LocalFighters[i] = i;
 
 	fc::Loadout Humans[MaxLocalPlayers];
 	for (int32 i = 0; i < LocalPlayers; ++i)
@@ -227,6 +258,12 @@ void AFightDirector::BuildSession()
 
 void AFightDirector::RestartMatch()
 {
+	if (Peer)
+	{
+		Rematch();
+		return;
+	}
+	if (IsOnline()) return; // still in the lobby
 	BuildSession();
 	ApplyAppearances();
 }
@@ -234,20 +271,21 @@ void AFightDirector::RestartMatch()
 void AFightDirector::ApplyAppearances()
 {
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
-	for (int32 i = 0; i < LocalPlayers && FighterVisuals.IsValidIndex(i); ++i)
-		if (S->Loadouts.IsValidIndex(i)) UFightAppearance::Apply(FighterVisuals[i], S->Loadouts[i]);
+	// outfits are cosmetic and stay on this console, remote players show their default look
+	for (int32 i = 0; i < LocalPlayers; ++i)
+		if (FighterVisuals.IsValidIndex(LocalFighters[i]) && S->Loadouts.IsValidIndex(i))
+			UFightAppearance::Apply(FighterVisuals[LocalFighters[i]], S->Loadouts[i]);
 }
 
-void AFightDirector::RecordMatchResult()
+void AFightDirector::RecordMatchResult(const fc::MatchState& State)
 {
-	const fc::MatchState& State = GetState();
 	const fc::MatchSetup& Setup = GetSetup();
 	UFightProfile* Profile = UFightProfile::Load();
 	for (int32 i = 0; i < LocalPlayers; ++i)
 	{
-		const fc::FighterState& F = State.f[i];
+		const fc::FighterState& F = State.f[LocalFighters[i]];
 		const bool bWon = State.winner == F.team;
-		const fc::TechniqueDef* Tech = Setup.loadout[i].technique;
+		const fc::TechniqueDef* Tech = Setup.loadout[LocalFighters[i]].technique;
 		Profile->AddMatch(bWon, F.kos, BlackSparks[i], RealmsOpened[i], Tech ? FString(UTF8_TO_TCHAR(Tech->id)) : FString());
 	}
 	Profile->Save();
@@ -366,7 +404,8 @@ void AFightDirector::SpawnFighterVisuals()
 void AFightDirector::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (!Session) return;
+	if (LobbyHost || LobbyClient) PollLobby(DeltaSeconds);
+	if (!HasSession()) return;
 
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
 	APlayerController* PC0 = UGameplayStatics::GetPlayerController(this, 0);
@@ -391,6 +430,11 @@ void AFightDirector::Tick(float DeltaSeconds)
 
 void AFightDirector::SimulateFrame()
 {
+	if (Peer)
+	{
+		SimulateOnlineFrame();
+		return;
+	}
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
 	Previous = Session->state();
 	bHasPrevious = true;
@@ -408,7 +452,7 @@ void AFightDirector::SimulateFrame()
 		if (!bResultRecorded)
 		{
 			bResultRecorded = true;
-			RecordMatchResult();
+			RecordMatchResult(Session->state());
 		}
 		if (++RoundOverFrames >= S->RestartDelayFrames) RestartMatch();
 	}
@@ -418,6 +462,19 @@ int32 AFightDirector::GetPlayerIndex(const APlayerController* PC) const
 {
 	for (int32 i = 0; i < LocalPlayers; ++i)
 		if (PC && PC == UGameplayStatics::GetPlayerController(this, i)) return i;
+	return -1;
+}
+
+int32 AFightDirector::GetPlayerFighter(const APlayerController* PC) const
+{
+	const int32 Local = GetPlayerIndex(PC);
+	return Local >= 0 ? LocalFighters[Local] : -1;
+}
+
+int32 AFightDirector::FindLocalIndex(int32 Fighter) const
+{
+	for (int32 i = 0; i < LocalPlayers; ++i)
+		if (LocalFighters[i] == Fighter) return i;
 	return -1;
 }
 
@@ -444,16 +501,17 @@ void AFightDirector::HandleEvent(const fc::ImpactEvent& E)
 {
 	const FFightImpact Impact = FightUnits::ToImpact(E);
 	OnImpact.Broadcast(Impact);
-	if (E.source < LocalPlayers)
+	const int32 Local = FindLocalIndex(E.source);
+	if (Local >= 0)
 	{
-		if (E.kind == fc::ImpactKind::BlackSpark) ++BlackSparks[E.source];
-		if (E.kind == fc::ImpactKind::RealmOpen) ++RealmsOpened[E.source];
+		if (E.kind == fc::ImpactKind::BlackSpark) ++BlackSparks[Local];
+		if (E.kind == fc::ImpactKind::RealmOpen) ++RealmsOpened[Local];
 	}
 
 	// Only shake the camera for things that happen close to a local player
 	bool bNearLocal = false;
 	for (int32 i = 0; i < LocalPlayers && !bNearLocal; ++i)
-		bNearLocal = FVector::DistSquared(Impact.Location, FightUnits::ToWorld(GetState().f[i].pos)) < FMath::Square(1500.f);
+		bNearLocal = FVector::DistSquared(Impact.Location, FightUnits::ToWorld(GetState().f[LocalFighters[i]].pos)) < FMath::Square(1500.f);
 	if (!bNearLocal) return;
 
 	using K = fc::ImpactKind;
@@ -480,8 +538,8 @@ void AFightDirector::HandleEvent(const fc::ImpactEvent& E)
 
 void AFightDirector::Present(float Alpha, float DeltaSeconds)
 {
-	const fc::MatchState& State = Session->state();
-	const fc::MatchSetup& Setup = Session->setup();
+	const fc::MatchState& State = GetState();
+	const fc::MatchSetup& Setup = GetSetup();
 
 	for (int32 i = 0; i < State.count; ++i)
 	{
@@ -547,8 +605,8 @@ void AFightDirector::Present(float Alpha, float DeltaSeconds)
 
 void AFightDirector::PresentObjective()
 {
-	const fc::MatchState& State = Session->state();
-	const fc::MatchSetup& Setup = Session->setup();
+	const fc::MatchState& State = GetState();
+	const fc::MatchSetup& Setup = GetSetup();
 	const fc::Objective Objective = Setup.rules.objective;
 
 	const int32 Flags = Objective == fc::Objective::CaptureTheFlag ? FMath::Min<int32>(Setup.rules.teamCount, fc::kMaxFlags) : 0;
@@ -587,8 +645,9 @@ void AFightDirector::UpdateCameras(float DeltaSeconds)
 	for (int32 i = 0; i < Cameras.Num(); ++i)
 	{
 		FFightChaseCamera& Cam = CameraState[i];
-		const fc::FighterState& F = GetState().f[i];
-		const FVector Self = FighterVisuals[i]->GetActorLocation();
+		const int32 Fighter = LocalFighters[i];
+		const fc::FighterState& F = GetState().f[Fighter];
+		const FVector Self = FighterVisuals[Fighter]->GetActorLocation();
 		const bool bLocked = F.lockOn && F.target >= 0;
 		float Distance = 600.f;
 		FVector LookAt;
@@ -632,8 +691,8 @@ void AFightDirector::UpdateCameras(float DeltaSeconds)
 
 void AFightDirector::DrawHitboxes() const
 {
-	const fc::MatchState& State = Session->state();
-	const fc::MatchSetup& Setup = Session->setup();
+	const fc::MatchState& State = GetState();
+	const fc::MatchSetup& Setup = GetSetup();
 	UWorld* World = GetWorld();
 	static const float HurtY[3] = { 0.5f, 1.2f, 1.7f };
 	static const float HurtR[3] = { 0.45f, 0.45f, 0.30f };
@@ -658,4 +717,174 @@ void AFightDirector::DrawHitboxes() const
 				FColor(230, 40, 40), false, -1.f, 0, 1.5f);
 		}
 	}
+}
+
+// ---------------------------------------------------------------- online
+
+void AFightDirector::StartOnline()
+{
+	LoadMods(); // the content hash has to be final before the first Hello
+	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
+	LocalPlayers = FMath::Clamp(S->LocalPlayers, 1, MaxLocalPlayers);
+	std::vector<fc::net::PlayerRequest> Requests;
+	for (int32 i = 0; i < LocalPlayers; ++i)
+		Requests.push_back(ToRequest(S->Loadouts.IsValidIndex(i) ? S->Loadouts[i] : FFightLoadout()));
+
+	Transport = MakeUnique<FFightUdpTransport>();
+	const bool bHost = NetMode == EFightNetMode::Host;
+	if (!Transport->Open(bHost ? S->Port : 0))
+	{
+		NetError = TEXT("Couldn't open a UDP socket");
+		return;
+	}
+	if (bHost)
+	{
+		Transport->SetAcceptNewPeers(true);
+		LobbyHost = MakeUnique<fc::net::LobbyHost>(*Transport, std::move(Requests));
+		UE_LOG(LogFight, Log, TEXT("Hosting on port %d, waiting for %d consoles"), Transport->GetBoundPort(), S->WaitForConsoles);
+	}
+	else
+	{
+		if (!Transport->SetPeer(0, S->HostAddress))
+		{
+			NetError = FString::Printf(TEXT("Bad host address '%s'"), *S->HostAddress);
+			return;
+		}
+		LobbyClient = MakeUnique<fc::net::LobbyClient>(*Transport, std::move(Requests));
+		UE_LOG(LogFight, Log, TEXT("Joining %s"), *S->HostAddress);
+	}
+	LobbyTime = 0.f;
+}
+
+void AFightDirector::PollLobby(float DeltaSeconds)
+{
+	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
+	LobbyTime += DeltaSeconds;
+	LobbyPollTimer -= DeltaSeconds;
+	if (LobbyPollTimer > 0.f) return;
+	LobbyPollTimer = 0.1f; // 10 Hz is plenty for a handshake
+
+	if (LobbyClient)
+	{
+		if (!LobbyClient->poll()) return;
+		const fc::net::LobbyConfig Config = LobbyClient->config();
+		const uint8 Me = LobbyClient->localPeer();
+		LobbyClient.Reset();
+		// full mesh: the host told us where everyone else is
+		for (int32 p = 1; p < static_cast<int32>(Config.peerAddresses.size()); ++p)
+			if (p != Me && !Config.peerAddresses[p].empty())
+				Transport->SetPeer(static_cast<uint8>(p), UTF8_TO_TCHAR(Config.peerAddresses[p].c_str()));
+		BeginOnlineMatch(Config, Me);
+		return;
+	}
+
+	if (!LobbyHost) return;
+	if (Peer)
+	{
+		// The match is on and the PeerSession owns the socket now, so no more poll() here.
+		// Anyone who missed the Start packet gets a few more copies.
+		if (StartResends-- > 0) LobbyHost->resendStart();
+		else LobbyHost.Reset();
+		return;
+	}
+	LobbyHost->poll();
+	const bool bFull = LobbyHost->peerCount() >= S->WaitForConsoles;
+	const bool bTimeout = S->LobbyTimeoutSeconds > 0.f && LobbyTime >= S->LobbyTimeoutSeconds;
+	if (!bFull && !bTimeout) return;
+
+	Transport->SetAcceptNewPeers(false);
+	std::vector<std::string> Addresses;
+	for (const FString& A : Transport->GetPeerAddresses()) Addresses.push_back(ToStd(A));
+	const fc::net::LobbyConfig Config = LobbyHost->start(ToMode(S->Mode), ToRules(*S), static_cast<uint8_t>(S->BotLevel),
+		static_cast<uint32_t>(FMath::Rand()), static_cast<uint8_t>(S->InputDelay), Addresses);
+	StartResends = 30; // 3 seconds
+	BeginOnlineMatch(Config, 0);
+}
+
+bool AFightDirector::BeginOnlineMatch(const fc::net::LobbyConfig& Config, uint8 LocalPeer)
+{
+	// the host builds its setup from the same lobby description as everyone else,
+	// so all consoles end up with byte-identical matches
+	std::string Error;
+	if (!fc::net::buildSetup(Config, OnlineSetup, &Error))
+	{
+		NetError = FString::Printf(TEXT("Can't join: %s"), UTF8_TO_TCHAR(Error.c_str()));
+		UE_LOG(LogFight, Error, TEXT("%s"), *NetError);
+		return false;
+	}
+	Lobby = Config;
+	OwnPeer = LocalPeer;
+	Round = 0;
+	Peer = MakeUnique<fc::net::PeerSession>(Lobby, OnlineSetup, OwnPeer, *Transport, Round);
+
+	const std::vector<int>& Slots = Peer->localSlots();
+	LocalPlayers = FMath::Clamp(static_cast<int32>(Slots.size()), 1, MaxLocalPlayers);
+	for (int32 i = 0; i < MaxLocalPlayers; ++i) LocalFighters[i] = i < static_cast<int32>(Slots.size()) ? Slots[i] : 0;
+
+	bHasPrevious = false;
+	RoundOverFrames = 0;
+	bResultRecorded = false;
+	bDesyncReported = false;
+	FMemory::Memzero(BlackSparks);
+	FMemory::Memzero(RealmsOpened);
+	Accumulator = 0.0;
+	UE_LOG(LogFight, Log, TEXT("Online match on %s: %d fighters, %d consoles, we are peer %d"),
+		UTF8_TO_TCHAR(fc::mapOf(OnlineSetup).name), OnlineSetup.count, Lobby.peerCount, OwnPeer);
+	StartPresentation();
+	return true;
+}
+
+void AFightDirector::SimulateOnlineFrame()
+{
+	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
+	for (int32 p = 0; p < LocalPlayers; ++p)
+		Peer->setLocalInput(p, Samplers[p].Build(S->StickDeadzone, CameraState[p].Yaw));
+
+	Previous = Peer->session().state();
+	bHasPrevious = true;
+	Events.clear();
+	Peer->tick(&Events);
+	// a rollback can replay a hit, effects only care about the newest frame anyway
+	for (const fc::ImpactEvent& E : Events) HandleEvent(E);
+
+	if (Peer->desynced() && !bDesyncReported)
+	{
+		bDesyncReported = true;
+		UE_LOG(LogFight, Error, TEXT("Desync at frame %d: the consoles disagree about the match"), Peer->frame());
+	}
+
+	// only end the round on a confirmed state, a predicted KO might get rolled back
+	const fc::MatchState* Settled = Peer->confirmedState();
+	if (!Settled || Settled->winner == fc::kNoWinner) return;
+	if (!bResultRecorded)
+	{
+		bResultRecorded = true;
+		RecordMatchResult(*Settled);
+	}
+	// counted in ticks, not frames: everyone keeps sending until they restart too
+	if (++RoundOverFrames >= S->RestartDelayFrames) Rematch();
+}
+
+void AFightDirector::Rematch()
+{
+	Peer = MakeUnique<fc::net::PeerSession>(Lobby, OnlineSetup, OwnPeer, *Transport, ++Round);
+	bHasPrevious = false;
+	RoundOverFrames = 0;
+	bResultRecorded = false;
+	FMemory::Memzero(BlackSparks);
+	FMemory::Memzero(RealmsOpened);
+	ApplyAppearances();
+}
+
+FString AFightDirector::GetNetStatus() const
+{
+	if (!NetError.IsEmpty()) return NetError;
+	if (LobbyClient) return FString::Printf(TEXT("Joining %s ..."), *GetDefault<UFightGameSettings>()->HostAddress);
+	if (LobbyHost && !Peer)
+		return FString::Printf(TEXT("Lobby: %d / %d consoles  (port %d)"), LobbyHost->peerCount(),
+			GetDefault<UFightGameSettings>()->WaitForConsoles, Transport ? Transport->GetBoundPort() : 0);
+	if (!Peer) return FString();
+	if (Peer->desynced()) return TEXT("DESYNC - the consoles disagree, check that everyone has the same mods");
+	if (Peer->stalled()) return TEXT("Waiting for other players ...");
+	return FString();
 }

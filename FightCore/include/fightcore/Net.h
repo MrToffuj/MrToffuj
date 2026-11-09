@@ -86,6 +86,9 @@ public:
     // Fixes the lobby and tells everyone. Bots fill the free slots.
     LobbyConfig start(GameMode mode, const ModeRules& rules, uint8_t botLevel, uint32_t seed, uint8_t inputDelay,
                       const std::vector<std::string>& peerAddresses = {});
+    // Once the match runs, the PeerSession reads the socket and late Hellos go unanswered.
+    // Call this now and then during the first seconds instead.
+    void resendStart();
     const std::string& lastRejection() const { return rejection_; }
 
 private:

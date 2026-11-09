@@ -16,6 +16,14 @@ enum class EFightMode : uint8
 };
 
 UENUM(BlueprintType)
+enum class EFightNetMode : uint8
+{
+	Offline UMETA(DisplayName = "Offline (local only)"),
+	Host UMETA(DisplayName = "Host a P2P lobby"),
+	Join UMETA(DisplayName = "Join a P2P lobby")
+};
+
+UENUM(BlueprintType)
 enum class EFightObjective : uint8
 {
 	None UMETA(DisplayName = "Free fight"),
