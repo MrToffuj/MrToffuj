@@ -170,15 +170,17 @@ namespace PlayStationPads
 		Out.Buttons = B;
 	}
 
-	bool Parse(EKind Kind, const uint8* R, int32 Length, FState& Out)
+	// bUsb: the pad's input reports are 64 bytes. Over Bluetooth they are longer, and Windows pads
+	// every report to that size, so the length we read says nothing about which report it is.
+	bool Parse(EKind Kind, const uint8* R, int32 Length, bool bUsb, FState& Out)
 	{
 		if (Length < 10) return false;
 		if (Kind == EKind::DualSense)
 		{
-			// USB (report 0x01, 64 bytes) and Bluetooth full mode (0x31) share a layout,
-			// Bluetooth just starts one byte later
+			// USB (report 0x01) and Bluetooth full mode (0x31) share a layout, Bluetooth just
+			// starts one byte later. Report 0x01 over Bluetooth is the short basic-mode one.
 			int32 Base = -1;
-			if (R[0] == 0x01 && Length >= 64) Base = 1;
+			if (R[0] == 0x01 && bUsb && Length >= 64) Base = 1;
 			else if (R[0] == 0x31 && Length >= 12) Base = 2;
 			if (Base > 0)
 			{
@@ -234,7 +236,7 @@ namespace PlayStationPads
 					break;
 				}
 				FState Parsed;
-				if (Parse(Kind, Report.GetData(), static_cast<int32>(Read), Parsed))
+				if (Parse(Kind, Report.GetData(), static_cast<int32>(Read), ReportSize == 64, Parsed))
 				{
 					FScopeLock Guard(&Lock);
 					Latest = Parsed;
