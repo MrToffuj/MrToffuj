@@ -263,9 +263,9 @@ Bodies ohne Begleiter: ein **zeitlich begrenzter Binding Oath** mit hohem Wert g
 
 | Modus | Spieler | Regeln | Kolonie |
 |---|---|---|---|
-| **1v1** | 2 | Elimination | Shrine Ward (Radius 14 m) |
-| **2v2** | 4 | Team-Elimination, kein Friendly Fire | Harbor District (20 m) |
-| **Brawl** | bis 20 | Offene Kolonie: **kein Zeitlimit, keine Leben**, Respawn nach 5 s, endet nie | Old Capital (70 m) |
+| **1v1** | 2 | Elimination | Shrine Ward (Radius 30 m) |
+| **2v2** | 4 | Team-Elimination, kein Friendly Fire | Harbor District (45 m) |
+| **Brawl** | bis 20 | Offene Kolonie: **kein Zeitlimit, keine Leben**, Respawn nach 5 s, endet nie | Old Capital (200 m) |
 | **Custom** | bis 20 | Eigene Teams (0 = jeder gegen jeden, bis 20 Teams), Ziel frei wählbar, Friendly Fire an/aus, Punkte-/Zeitlimit, Respawn-Zeit | jede Kolonie |
 
 **Custom-Ziele:**
@@ -281,12 +281,65 @@ Bodies ohne Begleiter: ein **zeitlich begrenzter Binding Oath** mit hohem Wert g
 - **Flaggen- und Ballträger können ihre Technik nicht nutzen** (nur Nahkampf), damit Träger angreifbar bleiben.
 - Alle Modi **online (P2P) oder lokal** (Splitscreen bis 4). Freie Plätze werden mit **Bots** aufgefüllt
   (3 Stufen). Bots spielen auch die Ziele. Details: [NETWORKING.md](NETWORKING.md).
-- **Lock-on:** automatisch auf den nächsten Gegner, L3 wechselt das Ziel.
+- **Lock-on:** Ohne Lock läuft man frei in Kamerarichtung, Angriffe richten sich leicht auf nahe Gegner aus (Soft Aim).
+  **L3 lockt** auf den Gegner vor dir bzw. löst den Lock, **rechter Stick flicken** wechselt das Ziel.
+- **Gegner-HP sind nie sichtbar:** Das HUD zeigt beim Gegner nur Name und Lock.
 - **K.O.-Wertung:** Wer den letzten Treffer setzt (auch Realm-Schaden, Brennen), bekommt den K.O.
 - **Realms haben einen Radius** (geschlossen 18 m um den Cast-Punkt, offen 10 m um den Besitzer).
   Mehrere Realms gleichzeitig sind möglich; wer im gegnerischen Realm seinen eigenen öffnet, löst einen Clash aus.
 
-## 11. Offene Punkte
+## 11. Cursed Objects ✅
+
+Passive Gegenstände, die man vor einer Runde anlegt, wenn der Modus sie erlaubt:
+
+| Modus | Slots |
+|---|---|
+| 1v1, 2v2 | 0 (aus, fair) |
+| Brawl | 2 |
+| Custom | 0–5 einstellbar (Standard 3) |
+
+| Objekt | Effekt |
+|---|---|
+| Withered Finger | +15 % Schaden, +10 % Schaden genommen |
+| Womb Painting | 10 % Lebensraub, −10 % max HP |
+| Stitched Doll | Begleiter +25 % Schaden |
+| Unraveling Rope | Guaranteed Hits nur halber Schaden, −10 % CE |
+| Slaughter Edge | +20 % Normals-Schaden, −15 % CE-Regen |
+| Soul Splitter | Black-Spark-Fenster +2 Frames |
+| Thunder Charm | +15 % Technik-Schaden, −5 % max HP |
+| Silk Blindfold | Parry-Fenster +3 Frames |
+| Sealed Cube | Start mit halbem Realm-Meter, −15 % Realm-Gewinn |
+| Promise Ring | +30 % Realm-Gewinn, −10 % Schaden |
+| Patchwork Charm | +120 HP pro K.O. |
+| Overtime Watch | Nach 60 s am Leben +25 % Schaden |
+| Lucky Ball | 6 % Chance auf doppelten Schaden |
+| Storage Worm | Cooldowns −15 %, −10 % max HP |
+| Thorn Talisman | Nahkampf-Angreifer kriegen 25 % zurück, −5 % Tempo |
+
+Per Mod erweiterbar (20 Effekt-Arten, siehe [MODDING.md](MODDING.md)).
+
+## 12. Outfits ✅ (Datenmodell)
+
+- **Zwei Grundkörper** (männlich, weiblich) mit gemeinsamem Skelett.
+- **Jedes Kleidungsstück hat einen männlichen und einen weiblichen Schnitt**, und **jeder Schnitt passt auf
+  jeden Körper**. Spieler kombinieren frei.
+- **Slots:** Kopf, Gesicht, Oberteil, Unterteil, Schuhe, Accessoire.
+- **Freischalten** über Siege, K.O.s, Matches, Black Sparks, geöffnete Realms oder Matches mit einer
+  bestimmten Technik. Fortschritt wird im Profil gespeichert.
+- **28 eingebaute Teile**, inspiriert von bekannten Looks:
+  - Akademie-Uniform als Standard
+  - Hooded Academy Jacket
+  - Silk Blindfold, Round Shades
+  - Five Color Kesa
+  - Overtime Suit + Patterned Tie
+  - Shrine Kimono
+  - Black Compression Shirt
+  - Pachinko Parlor Jacket, Hammer and Nail Pouch
+  - je ein Teil pro Technik
+- **Rein kosmetisch:** kein Einfluss aufs Gameplay. Per Mod erweiterbar.
+- **Noch offen:** Die 3D-Modelle selbst. Der Code lädt sie, sobald sie unter `/Game/Outfits/<id>/` liegen.
+
+## 13. Offene Punkte
 
 - [ ] Restliche 7 Techniken implementieren (Pure Love braucht noch den Bound Spirit als Guard-Begleiter)
 - [ ] Notfall-Binding Oath mitten im Match, Technik-spezifische Hidden Rewards, Vow-Journal

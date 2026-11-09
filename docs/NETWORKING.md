@@ -37,6 +37,7 @@ exakt beim gleichen Zustand.
   ganz normaler Peer, die Simulation läuft überall gleichberechtigt.
 - Verlässt der Host das Spiel, übernimmt der nächste Peer (**Host-Migration**).
 - `fc::buildMatch` füllt freie Slots deterministisch mit Bots: Jeder Peer baut aus Seed + Regeln dieselbe Lobby.
+- **Mods:** Peers vergleichen `Registry::contentHash()`. Nur Spieler mit exakt denselben Mods kommen in dieselbe Lobby.
 - **Brawl (offen):** Spieler können jederzeit joinen. Ein Neuer übernimmt einen Bot-Slot ab einem
   vereinbarten Frame und bekommt einen Snapshot des Spielzustands (~11 KB). Wer geht, wird wieder durch
   einen Bot ersetzt.

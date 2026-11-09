@@ -58,6 +58,7 @@ const EffigyLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "straw_effigy";
     t.name = "Straw Effigy";
     t.coreRule = "Nails mark whoever they hit, marks detonate on command from any range.";
     t.weakness = "Fragile, and the marks are easy to see.";

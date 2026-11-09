@@ -78,6 +78,7 @@ const BoundlessLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "boundless";
     t.name = "Boundless";
     t.coreRule = "Infinite Gap: auto-blocks projectiles and lights at a CE cost.";
     t.weakness = "No CE, no gap. Grabs always go through.";

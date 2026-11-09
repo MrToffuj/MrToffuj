@@ -15,7 +15,7 @@ constexpr int kMaxProjectiles = 64;
 constexpr uint8_t kNoWinner = 255;
 constexpr uint8_t kDraw = 254;
 constexpr int kMaxTeams = kMaxFighters;
-constexpr int kMaxObstacles = 24;
+constexpr int kMaxObstacles = 96;
 constexpr int kMaxFlags = 4;
 constexpr int kMaxZones = 3;
 
@@ -92,6 +92,8 @@ struct FighterState {
     uint8_t team = 0;
     int8_t target = -1;  // lock-on
     bool manualTarget = false;  // picked by hand, don't auto switch
+    bool lockOn = true;         // facing and movement follow the target
+    int32_t spawnFrame = 0;
     bool out = false;
     int16_t respawn = 0;  // frames until respawn
     int16_t kos = 0;

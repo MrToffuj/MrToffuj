@@ -37,7 +37,7 @@ namespace
 }
 
 void FFightInputSampler::Sample(const APlayerController* Own, const APlayerController* KeyboardOwner,
-	const FFightBindings& Pad, const FFightBindings& Keys)
+	const FFightBindings& Pad, const FFightBindings& Keys, bool bReadMouse)
 {
 	Held = 0;
 	for (const FButtonMap& B : GButtons)
@@ -50,11 +50,31 @@ void FFightInputSampler::Sample(const APlayerController* Own, const APlayerContr
 	}
 
 	Stick = FVector2D::ZeroVector;
+	LookYaw = 0.f;
 	if (Own)
 	{
 		Stick.X = Own->GetInputAnalogKeyState(EKeys::Gamepad_LeftX);
 		Stick.Y = Own->GetInputAnalogKeyState(EKeys::Gamepad_LeftY);
+		const float RightX = Own->GetInputAnalogKeyState(EKeys::Gamepad_RightX);
+		LookYaw = RightX;
+		// flick to switch targets: needs to come back to the middle before the next one counts
+		if (bFlickArmed && FMath::Abs(RightX) > 0.85f)
+		{
+			Latched |= fc::BtnTargetNext;
+			bFlickArmed = false;
+		}
+		else if (FMath::Abs(RightX) < 0.3f)
+		{
+			bFlickArmed = true;
+		}
 	}
+	if (bReadMouse && KeyboardOwner)
+	{
+		float MouseX = 0.f, MouseY = 0.f;
+		KeyboardOwner->GetInputMouseDelta(MouseX, MouseY);
+		LookYaw += MouseX * 0.25f;
+	}
+
 	Digital = FVector2D::ZeroVector;
 	if (AnyDown(Own, Pad.Right) || AnyDown(KeyboardOwner, Keys.Right)) Digital.X += 1.f;
 	if (AnyDown(Own, Pad.Left) || AnyDown(KeyboardOwner, Keys.Left)) Digital.X -= 1.f;
@@ -62,26 +82,27 @@ void FFightInputSampler::Sample(const APlayerController* Own, const APlayerContr
 	if (AnyDown(Own, Pad.Down) || AnyDown(KeyboardOwner, Keys.Down)) Digital.Y -= 1.f;
 }
 
-fc::FrameInput FFightInputSampler::Build(float Deadzone)
+fc::FrameInput FFightInputSampler::Build(float Deadzone, float CameraYawDegrees)
 {
 	fc::FrameInput In;
 	In.buttons = static_cast<uint16_t>(Held | Latched);
 	Latched = 0;
 
-	// Digital hat Vorrang (D-Pad / Tasten), sonst Analog-Stick mit Deadzone.
+	// d-pad and keys win over the analog stick
 	FVector2D V = Digital.IsNearlyZero() ? Stick : Digital;
 	const float Mag = V.Size();
-	if (Mag < Deadzone)
-	{
-		In.dir = 5;
-		return In;
-	}
+	if (Mag < Deadzone) return In;
 	V /= Mag;
-	// 8-Wege mit 45°-Sektoren: Achse aktiv ab sin(22,5°)
-	constexpr float Threshold = 0.383f;
-	const int H = V.X > Threshold ? 1 : (V.X < -Threshold ? -1 : 0);
-	const int Vt = V.Y > Threshold ? 1 : (V.Y < -Threshold ? -1 : 0);
-	static const uint8 Numpad[3][3] = { { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 } };
-	In.dir = Numpad[Vt + 1][H + 1];
+
+	// stick space -> world: up on the stick is where the camera looks
+	const float Yaw = FMath::DegreesToRadians(CameraYawDegrees);
+	const FVector Forward(FMath::Cos(Yaw), FMath::Sin(Yaw), 0.f);
+	const FVector Right(-Forward.Y, Forward.X, 0.f);
+	const FVector World = Forward * V.Y + Right * V.X;
+
+	// Unreal x forward / y right -> simulation x right / z forward
+	In.moveX = static_cast<int8_t>(FMath::Clamp(FMath::RoundToInt(World.Y * 127.f), -127, 127));
+	In.moveZ = static_cast<int8_t>(FMath::Clamp(FMath::RoundToInt(World.X * 127.f), -127, 127));
+	if (In.moveX == 0 && In.moveZ == 0) In.moveZ = 1; // tiny pushes still count
 	return In;
 }

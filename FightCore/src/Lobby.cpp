@@ -1,4 +1,5 @@
 #include "Techniques.h"
+#include "fightcore/Registry.h"
 #include "fightcore/Simulation.h"
 
 namespace fc {
@@ -26,12 +27,11 @@ MatchSetup buildMatch(GameMode mode, const ModeRules& rules, const Loadout* huma
 
     const BodyDef* bodyPool[] = {&bodies::heavy(), &bodies::speedster(), &bodies::caster(), &bodies::brawler(),
                                  &bodies::technician(), &bodies::summoner(), &bodies::heavensBind()};
-    const TechniqueDef* techPool[] = {&techniques::boundless(),    &techniques::calamityFlames(), &techniques::shadowPuppets(),
-                                      &techniques::graniteCannon(), &techniques::skyWeave(),       &techniques::thunderVessel(),
-                                      &techniques::starMass(),      &techniques::blossomDraw(),    &techniques::spiritHoard(),
-                                      &techniques::jackpot(),       &techniques::strawEffigy(),    &techniques::puppetPilot(),
-                                      &techniques::lightMalice()};
-    constexpr int kTechCount = static_cast<int>(sizeof(techPool) / sizeof(techPool[0]));
+    // bots pick from everything that's loaded, mods included (every peer has the same set)
+    std::vector<const TechniqueDef*> techPool;
+    for (const TechniqueDef* t : Registry::instance().techniques())
+        if (!t->ceFree) techPool.push_back(t);
+    const int kTechCount = static_cast<int>(techPool.size());
     const CompanionDef* assistPool[] = {&companions::bladeWolf(), &companions::sparkOwl(), &companions::vineToad(),
                                         &companions::stoneWarden()};
 

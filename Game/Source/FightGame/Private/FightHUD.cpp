@@ -46,6 +46,12 @@ void AFightHUD::DrawFighterPanel(int32 Fighter, bool bRight, bool bDetailed)
 	DrawLabel(Name, TextX, Margin - 4.f * S, Director->GetFighterColor(Fighter), 1.1f, bRight);
 
 	float Y = Margin + 30.f * S;
+	if (!bDetailed)
+	{
+		// enemies only show who they are, never how much health they have left
+		DrawLabel(TEXT("LOCKED ON"), TextX, Y, FLinearColor(1.f, 0.4f, 0.3f), 0.9f, bRight);
+		return;
+	}
 	DrawBar(X, Y, BarW, 26.f * S, static_cast<float>(F.health) / Stats.maxHealth, FLinearColor(0.9f, 0.2f, 0.15f), bRight);
 	Y += 34.f * S;
 
@@ -59,8 +65,6 @@ void AFightHUD::DrawFighterPanel(int32 Fighter, bool bRight, bool bDetailed)
 	DrawBar(X, Y, BarW * 0.6f, 10.f * S, static_cast<float>(F.realmMeter) / fc::kRealmMeterMax,
 		bRealmReady ? FLinearColor(1.f, 0.85f, 0.1f) : FLinearColor(0.7f, 0.55f, 0.1f), bRight);
 	Y += 18.f * S;
-	if (!bDetailed) return;
-
 	FString Status;
 	if (F.burnout > 0) Status += TEXT("BURNOUT  ");
 	if (bRealmReady) Status += TEXT("REALM READY  ");
@@ -90,6 +94,12 @@ void AFightHUD::DrawFighterPanel(int32 Fighter, bool bRight, bool bDetailed)
 		Y += 18.f * S;
 		DrawBar(X, Y, BarW * 0.3f, 8.f * S, static_cast<float>(C.hp) / Def.maxHp, FLinearColor(0.6f, 0.9f, 0.6f), bRight);
 		Y += 14.f * S;
+	}
+	for (int32 k = 0; k < FMath::Min<int32>(Setup.rules.cursedObjectSlots, fc::kMaxCursedObjects); ++k)
+	{
+		if (!L.cursed[k]) continue;
+		DrawLabel(UTF8_TO_TCHAR(L.cursed[k]->name), TextX, Y, FLinearColor(0.75f, 0.5f, 0.9f), 0.65f, bRight);
+		Y += 16.f * S;
 	}
 }
 
@@ -184,7 +194,7 @@ void AFightHUD::DrawHUD()
 	const fc::FighterState& Me = State.f[Self];
 
 	DrawFighterPanel(Self, false, true);
-	if (Me.target >= 0) DrawFighterPanel(Me.target, true, Setup.mode == fc::GameMode::Duel);
+	if (Me.lockOn && Me.target >= 0) DrawFighterPanel(Me.target, true, false);
 
 	if (Setup.mode == fc::GameMode::Brawl) DrawKoBoard();
 	DrawObjective(Self);

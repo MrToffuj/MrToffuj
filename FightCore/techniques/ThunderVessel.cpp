@@ -72,6 +72,7 @@ const ThunderLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "thunder_vessel";
     t.name = "Thunder Vessel";
     t.coreRule = "Hits store electric charge, Bolt releases all of it.";
     t.weakness = "Amber Form runs out, then you're burned out and wide open.";

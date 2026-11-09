@@ -45,6 +45,7 @@ const LightLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "light_malice";
     t.name = "Light & Malice";
     t.coreRule = "Light-speed attacks plus killing intent you can feel.";
     t.weakness = "Every skill tears at your own body, and they're all expensive.";

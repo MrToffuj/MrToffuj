@@ -80,6 +80,7 @@ const JackpotLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "jackpot";
     t.name = "Jackpot";
     t.coreRule = "Landing and blocking hits fills the jackpot meter. Jackpot: unlimited CE and auto healing.";
     t.weakness = "Thin kit until the jackpot hits, and the realm can be countered.";

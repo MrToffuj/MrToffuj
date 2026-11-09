@@ -6,7 +6,13 @@
 #include "DrawDebugHelpers.h"
 #include "FightGame.h"
 #include "FightGameSettings.h"
+#include "FightAppearance.h"
+#include "FightProfile.h"
 #include "FightShapeVisual.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "fightcore/Registry.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Techniques.h"
@@ -83,6 +89,8 @@ namespace
 		}
 	}
 
+	std::string ToStd(const FName& Name) { return std::string(TCHAR_TO_UTF8(*Name.ToString())); }
+
 	fc::ModeRules ToRules(const UFightGameSettings& S)
 	{
 		const fc::GameMode Mode = ToMode(S.Mode);
@@ -98,6 +106,9 @@ namespace
 		R.scoreLimit = static_cast<int16_t>(C.ScoreLimit);
 		R.timeLimitFrames = C.TimeLimitMinutes > 0 ? C.TimeLimitMinutes * 60 * 60 : -1;
 		R.respawnFrames = R.objective == fc::Objective::Elimination ? -1 : static_cast<int16_t>(FMath::Max(1, C.RespawnSeconds) * 60);
+		R.cursedObjectSlots = static_cast<uint8_t>(FMath::Clamp(C.CursedObjectSlots, 0, fc::kMaxCursedObjects));
+		if (!C.ModMap.IsNone())
+			if (const fc::MapDef* Modded = fc::Registry::instance().map(ToStd(C.ModMap))) R.map = Modded;
 		return R;
 	}
 
@@ -108,6 +119,12 @@ namespace
 		Out.technique = In.Body == EFightBody::HeavensBind ? &fc::techniques::toolArsenal() : TechniqueOf(In.Technique);
 		Out.assist = AssistOf(In.Assist);
 		Out.team = static_cast<uint8_t>(FMath::Clamp(In.Team, 0, fc::kMaxTeams - 1));
+		Out.lockOnAtStart = false; // players lock on themselves with L3
+		const fc::Registry& Reg = fc::Registry::instance();
+		if (!In.ModTechnique.IsNone() && In.Body != EFightBody::HeavensBind)
+			if (const fc::TechniqueDef* Modded = Reg.technique(ToStd(In.ModTechnique))) Out.technique = Modded;
+		for (int32 k = 0; k < FMath::Min(In.CursedObjects.Num(), fc::kMaxCursedObjects); ++k)
+			Out.cursed[k] = Reg.cursedObject(ToStd(In.CursedObjects[k]));
 	}
 
 	FLinearColor CompanionColor(fc::CompanionType T)
@@ -158,10 +175,35 @@ void AFightDirector::BeginPlay()
 	BuildSession();
 	SpawnArena();
 	SpawnFighterVisuals();
+	ApplyAppearances();
+}
+
+void AFightDirector::LoadMods()
+{
+	static bool bLoaded = false;
+	if (bLoaded) return;
+	bLoaded = true;
+
+	const FString Root = FPaths::Combine(FPaths::ProjectDir(), GetDefault<UFightGameSettings>()->ModsFolder);
+	TArray<FString> Files;
+	IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("mod.json"), true, false);
+	Files.Sort(); // same order everywhere, the content hash depends on it
+	for (const FString& File : Files)
+	{
+		FString Text;
+		if (!FFileHelper::LoadFileToString(Text, *File)) continue;
+		const FTCHARToUTF8 Utf8(*Text);
+		std::string Error;
+		if (fc::Registry::instance().loadMod(std::string_view(Utf8.Get(), Utf8.Length()), &Error))
+			UE_LOG(LogFight, Log, TEXT("Loaded mod %s"), *File);
+		else
+			UE_LOG(LogFight, Warning, TEXT("Skipped mod %s: %s"), *File, UTF8_TO_TCHAR(Error.c_str()));
+	}
 }
 
 void AFightDirector::BuildSession()
 {
+	LoadMods();
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
 	const fc::GameMode Mode = ToMode(S->Mode);
 	const fc::ModeRules Rules = ToRules(*S);
@@ -176,6 +218,9 @@ void AFightDirector::BuildSession()
 	Session = MakeUnique<fc::Session>(Setup);
 	bHasPrevious = false;
 	RoundOverFrames = 0;
+	bResultRecorded = false;
+	FMemory::Memzero(BlackSparks);
+	FMemory::Memzero(RealmsOpened);
 	Accumulator = 0.0;
 	UE_LOG(LogFight, Log, TEXT("Match on %s: %d fighters, %d local"), UTF8_TO_TCHAR(fc::mapOf(Setup).name), Setup.count, LocalPlayers);
 }
@@ -183,6 +228,29 @@ void AFightDirector::BuildSession()
 void AFightDirector::RestartMatch()
 {
 	BuildSession();
+	ApplyAppearances();
+}
+
+void AFightDirector::ApplyAppearances()
+{
+	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
+	for (int32 i = 0; i < LocalPlayers && FighterVisuals.IsValidIndex(i); ++i)
+		if (S->Loadouts.IsValidIndex(i)) UFightAppearance::Apply(FighterVisuals[i], S->Loadouts[i]);
+}
+
+void AFightDirector::RecordMatchResult()
+{
+	const fc::MatchState& State = GetState();
+	const fc::MatchSetup& Setup = GetSetup();
+	UFightProfile* Profile = UFightProfile::Load();
+	for (int32 i = 0; i < LocalPlayers; ++i)
+	{
+		const fc::FighterState& F = State.f[i];
+		const bool bWon = State.winner == F.team;
+		const fc::TechniqueDef* Tech = Setup.loadout[i].technique;
+		Profile->AddMatch(bWon, F.kos, BlackSparks[i], RealmsOpened[i], Tech ? FString(UTF8_TO_TCHAR(Tech->id)) : FString());
+	}
+	Profile->Save();
 }
 
 AFightShapeVisual* AFightDirector::SpawnShape(int32 Shape, const FLinearColor& Color, const FVector& SizeCm, const FVector& Offset)
@@ -298,7 +366,7 @@ void AFightDirector::Tick(float DeltaSeconds)
 		if (PC && Cameras.IsValidIndex(i) && PC->GetViewTarget() != Cameras[i]) PC->SetViewTarget(Cameras[i]);
 		// Keyboard events always arrive on the first controller, only P1 and P2 have a keyboard layout
 		const FFightBindings& Keys = i == 0 ? S->KeyboardP1 : (i == 1 ? S->KeyboardP2 : NoKeys);
-		Samplers[i].Sample(PC, PC0, S->Gamepad, Keys);
+		Samplers[i].Sample(PC, PC0, S->Gamepad, Keys, i == 0);
 	}
 
 	Accumulator += FMath::Min(static_cast<double>(DeltaSeconds), 0.25);
@@ -318,14 +386,21 @@ void AFightDirector::SimulateFrame()
 
 	const int32 Frame = Session->frame();
 	for (int32 p = 0; p < LocalPlayers; ++p)
-		Session->setInput(p, Frame, Samplers[p].Build(S->StickDeadzone));
+		Session->setInput(p, Frame, Samplers[p].Build(S->StickDeadzone, CameraState[p].Yaw));
 
 	Events.clear();
 	Session->advance(&Events);
 	for (const fc::ImpactEvent& E : Events) HandleEvent(E);
 
-	if (Session->state().winner != fc::kNoWinner && ++RoundOverFrames >= S->RestartDelayFrames)
-		RestartMatch();
+	if (Session->state().winner != fc::kNoWinner)
+	{
+		if (!bResultRecorded)
+		{
+			bResultRecorded = true;
+			RecordMatchResult();
+		}
+		if (++RoundOverFrames >= S->RestartDelayFrames) RestartMatch();
+	}
 }
 
 int32 AFightDirector::GetPlayerIndex(const APlayerController* PC) const
@@ -358,6 +433,11 @@ void AFightDirector::HandleEvent(const fc::ImpactEvent& E)
 {
 	const FFightImpact Impact = FightUnits::ToImpact(E);
 	OnImpact.Broadcast(Impact);
+	if (E.source < LocalPlayers)
+	{
+		if (E.kind == fc::ImpactKind::BlackSpark) ++BlackSparks[E.source];
+		if (E.kind == fc::ImpactKind::RealmOpen) ++RealmsOpened[E.source];
+	}
 
 	// Only shake the camera for things that happen close to a local player
 	bool bNearLocal = false;
@@ -496,26 +576,40 @@ void AFightDirector::UpdateCameras(float DeltaSeconds)
 	for (int32 i = 0; i < Cameras.Num(); ++i)
 	{
 		FFightChaseCamera& Cam = CameraState[i];
-		const int32 Target = GetState().f[i].target;
+		const fc::FighterState& F = GetState().f[i];
 		const FVector Self = FighterVisuals[i]->GetActorLocation();
-		const FVector Opponent = Target >= 0 ? FighterVisuals[Target]->GetActorLocation() : Self + Cam.Forward * 500.f;
+		const bool bLocked = F.lockOn && F.target >= 0;
+		float Distance = 600.f;
+		FVector LookAt;
 
-		// Sit behind our own fighter and look toward the lock-on target
-		FVector ToOpponent = Opponent - Self;
-		ToOpponent.Z = 0.f;
-		const float Distance = ToOpponent.Size();
-		if (Distance > 1.f)
+		if (bLocked)
 		{
-			const FVector WantedForward = ToOpponent / Distance;
-			const float Blend = Cam.bInitialized ? FMath::Min(1.f, DeltaSeconds * S->CameraFollowSpeed * 0.8f) : 1.f;
-			Cam.Forward = (Cam.Forward + (WantedForward - Cam.Forward) * Blend).GetSafeNormal2D();
+			// sit behind our fighter and look toward the lock-on target
+			FVector ToOpponent = FighterVisuals[F.target]->GetActorLocation() - Self;
+			ToOpponent.Z = 0.f;
+			Distance = ToOpponent.Size();
+			if (Distance > 1.f)
+			{
+				const FVector WantedForward = ToOpponent / Distance;
+				const float Blend = Cam.bInitialized ? FMath::Min(1.f, DeltaSeconds * S->CameraFollowSpeed * 0.8f) : 1.f;
+				Cam.Forward = (Cam.Forward + (WantedForward - Cam.Forward) * Blend).GetSafeNormal2D();
+			}
+			Cam.Yaw = Cam.Forward.Rotation().Yaw;
+			LookAt = Self + Cam.Forward * FMath::Clamp(Distance * 0.6f, 200.f, 900.f) + FVector(0.f, 0.f, 110.f);
+		}
+		else
+		{
+			// free camera: the right stick turns it
+			if (!Cam.bInitialized) Cam.Yaw = FightUnits::ToWorldDir(F.facing).Rotation().Yaw;
+			Cam.Yaw += Samplers[i].GetLookYaw() * S->CameraTurnSpeed * DeltaSeconds;
+			Cam.Forward = FRotator(0.f, Cam.Yaw, 0.f).Vector();
+			LookAt = Self + Cam.Forward * 600.f + FVector(0.f, 0.f, 110.f);
 		}
 		const FVector Right = FVector::CrossProduct(FVector::UpVector, Cam.Forward);
 
-		// back off a little when we're right on top of each other
+		// back off a little when we're right on top of the target
 		const float Back = S->CameraDistance + FMath::Max(0.f, 300.f - Distance) * 0.5f;
 		const FVector WantedLocation = Self - Cam.Forward * Back + Right * S->CameraShoulderOffset + FVector(0.f, 0.f, S->CameraHeight);
-		const FVector LookAt = Self + Cam.Forward * FMath::Clamp(Distance * 0.6f, 200.f, 900.f) + FVector(0.f, 0.f, 110.f);
 
 		Cam.Location = Cam.bInitialized ? FMath::VInterpTo(Cam.Location, WantedLocation, DeltaSeconds, S->CameraFollowSpeed) : WantedLocation;
 		Cam.bInitialized = true;

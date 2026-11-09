@@ -29,12 +29,18 @@ Kampfsystem testen können, bevor Modelle und Anime-Shader kommen.
 | Dash | R2 / RT | E | Num6 |
 | Ult | L2 / LT | R | Num7 |
 | Assist | R3 | F | Num8 |
-| Ziel wechseln | L3 | Tab | Num9 |
+| Lock-on an/aus | L3 | Tab | Num9 |
+| Ziel wechseln (mit Lock) | rechten Stick flicken | – | – |
+| Kamera drehen (ohne Lock) | rechter Stick | Maus | – |
 
 Combos aus der GDD (Mod + Light = Skill 1, Guard + Grab = CE-Burst usw.) gelten genauso.
 
-**Kamera:** sitzt hinter dem eigenen Kämpfer mit Lock-on auf den Gegner. Stick **hoch = auf den Gegner zu**,
-runter = zurück, links/rechts = um den Gegner herum. Zurück + Heavy = Launcher.
+**Kamera & Bewegung:** Ohne Lock läuft man in Kamerarichtung und dreht die Kamera mit dem rechten Stick.
+Mit Lock (L3) sitzt die Kamera hinter dem Kämpfer und schaut auf das Ziel: Stick hoch = auf den Gegner zu,
+runter = zurück, links/rechts = umkreisen. Zurück + Heavy = Launcher. Gegner-HP werden nie angezeigt.
+
+**Mods:** Alles unter `Game/Mods/*/mod.json` wird beim Start geladen (siehe [docs/MODDING.md](../docs/MODDING.md)).
+**Outfits & Cursed Objects:** pro Spieler im Loadout (Projekt-Einstellungen → Fight Game → Match → Loadouts).
 Lokale Mitspieler (bis 4) spielen im Splitscreen, jeder sieht hinter seinem Kämpfer.
 
 **Modi:** 1v1, 2v2, Brawl (offen, bis 20) und Custom (Teams, Ziel, Map frei wählbar). Freie Slots werden

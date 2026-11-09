@@ -16,6 +16,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFightImpact, const FFightImpact&,
 
 struct FFightChaseCamera
 {
+	float Yaw = 0.f;
 	FVector Forward = FVector::ForwardVector;
 	FVector Location = FVector::ZeroVector;
 	bool bInitialized = false;
@@ -54,6 +55,8 @@ public:
 	// Local players own the first fighter slots. Returns -1 for anything else.
 	int32 GetPlayerIndex(const APlayerController* PC) const;
 	FString GetFighterLabel(int32 Fighter) const;
+	// Loads every mod.json under the mods folder once. Safe to call repeatedly.
+	static void LoadMods();
 	FLinearColor GetFighterColor(int32 Fighter) const;
 	FLinearColor GetTeamColor(int32 Team) const;
 
@@ -67,6 +70,8 @@ private:
 	void PresentObjective();
 	void UpdateCameras(float DeltaSeconds);
 	void DrawHitboxes() const;
+	void RecordMatchResult();
+	void ApplyAppearances();
 
 	AFightShapeVisual* SpawnShape(int32 Shape, const FLinearColor& Color, const FVector& SizeCm, const FVector& Offset);
 
@@ -78,6 +83,9 @@ private:
 	int32 LocalPlayers = 1;
 	double Accumulator = 0.0;
 	int32 RoundOverFrames = 0;
+	bool bResultRecorded = false;
+	int32 BlackSparks[MaxLocalPlayers] = {};
+	int32 RealmsOpened[MaxLocalPlayers] = {};
 
 	float ShakeTime = 0.f;
 	float ShakeStrength = 0.f;

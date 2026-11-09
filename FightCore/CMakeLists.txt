@@ -15,6 +15,10 @@ add_library(fightcore
     src/Bot.cpp
     src/Lobby.cpp
     src/Maps.cpp
+    src/CursedObjects.cpp
+    src/Cosmetics.cpp
+    src/Json.cpp
+    src/Registry.cpp
     techniques/Boundless.cpp
     techniques/CalamityFlames.cpp
     techniques/ShadowPuppets.cpp
@@ -44,3 +48,4 @@ add_test(NAME fightcore_tests COMMAND fightcore_tests)
 
 add_executable(fightcore_snapshot tools/snapshot.cpp)
 target_link_libraries(fightcore_snapshot PRIVATE fightcore)
+target_compile_definitions(fightcore_tests PRIVATE FC_EXAMPLE_MOD="${CMAKE_CURRENT_SOURCE_DIR}/../Game/Mods/ExampleMod/mod.json")

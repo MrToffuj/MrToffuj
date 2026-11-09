@@ -89,6 +89,7 @@ const StarLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "star_mass";
     t.name = "Star Mass";
     t.coreRule = "Plain hits pile up virtual mass, which makes everything hit harder.";
     t.weakness = "Takes setup and eats CE.";

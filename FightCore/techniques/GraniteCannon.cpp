@@ -56,6 +56,7 @@ const GraniteLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "granite_cannon";
     t.name = "Granite Cannon";
     t.coreRule = "Landed hits charge output stacks, beams spend them.";
     t.weakness = "Easy to read charge, poor mobility.";

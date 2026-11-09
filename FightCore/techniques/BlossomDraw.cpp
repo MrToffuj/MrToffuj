@@ -56,6 +56,7 @@ const BlossomLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "blossom_draw";
     t.name = "Blossom Draw";
     t.coreRule = "Counter zone: guarding cuts down close melee attackers automatically.";
     t.weakness = "Reactive. Without a read it does nothing.";

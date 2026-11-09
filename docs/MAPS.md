@@ -27,12 +27,14 @@ schwarzen Barriere. Drinnen ist alles zerstörbar, die Barriere selbst nie.
 
 | Kolonie | Radius | Inhalt | Modi |
 |---|---|---|---|
-| **Shrine Ward** | 14 m | 4 Steinsäulen um die Mitte, 1 Zone | 1v1 |
-| **Harbor District** | 20 m | 6 Lagerhallen/Kisten, 3 Zonen | 2v2, kleine Custom-Matches |
-| **Old Capital** | 70 m | 16 Häuser in zwei Ringen, 3 Zonen | Brawl, Custom |
-| **Temple Steps** | 26 m | Ring aus 12 Schrein-Säulen um eine Haupthalle, Tor | Custom, kleinere Teams |
-| **Shattered Downtown** | 55 m | Häuserblocks im Raster, Türme werden zur Mitte höher, enge Straßen | Brawl, Custom (Nahkampf) |
-| **Frozen Lake** | 32 m | Weite Eisfläche mit wenigen Bootswracks, kaum Deckung | Custom (Zoner-Paradies) |
+| **Shrine Ward** | 30 m | 4 Steinsäulen, Ring aus 8 Laternen | 1v1 |
+| **Harbor District** | 45 m | 24 Lagerhallen und Kistenstapel in zwei Ringen, 3 Zonen | 2v2, kleine Custom-Matches |
+| **Old Capital** | 200 m | 72 Häuser in fünf Ringen, 3 Zonen | Brawl, Custom |
+| **Temple Steps** | 70 m | Haupthalle, zwei Säulenringe, Seitenschreine, Tor | Custom |
+| **Shattered Downtown** | 140 m | 96 Häuserblocks im Raster, Türme werden zur Mitte höher | Brawl, Custom (Nahkampf) |
+| **Frozen Lake** | 95 m | Weite Eisfläche, 20 Bootswracks | Custom (Zoner-Paradies) |
+
+Alle Kolonien sind gegenüber der ersten Version 2,1–2,9× so groß (Radius). Eigene Kolonien per Mod: [MODDING.md](MODDING.md).
 
 Vorschau (echte Simulation, Platzhalter-Optik): [docs/preview](preview).
 

@@ -1,0 +1,65 @@
+// Example mod. Drop a folder like this into Game/Mods and it shows up in the game.
+// Everything is data: numbers are read as exact fixed point so every player computes the same thing.
+{
+  "id": "example_mod",
+  "name": "Example Mod",
+  "version": "1.0",
+  "author": "Carnage Game",
+
+  "techniques": [
+    {
+      "id": "frost_bloom",
+      "name": "Frost Bloom",
+      "coreRule": "Every hit chills the air around you, stacking up to five times.",
+      "weakness": "Slow skills, and the counter stance is easy to bait.",
+      "core": { "type": "stacksOnHit", "max": 5, "damagePerStack": 6 },
+      "realm": { "name": "Winter Garden", "class": "debuff" },
+      "skills": [
+        { "name": "Ice Lance", "effect": "beam", "length": 14, "radius": 0.4,
+          "ce": 80, "cooldown": 140, "startup": 16, "recovery": 22,
+          "damage": 85, "hitstun": 24, "knockback": 0.3, "impact": "heavy" },
+        { "name": "Frost Wolf", "effect": "summon", "ce": 90, "cooldown": 200, "startup": 10, "recovery": 12,
+          "companion": { "name": "Frost Wolf", "type": "striker", "hp": 200, "damage": 80, "hitstun": 20 } },
+        { "name": "Glacier Parry", "effect": "counter", "frames": 35, "ce": 50, "cooldown": 240,
+          "startup": 3, "recovery": 30, "damage": 120, "hitstun": 30, "knockback": 0.4, "impact": "heavy" }
+      ],
+      "maxOutput": { "name": "Absolute Zero", "type": "zone", "effect": "zone", "radius": 3.5, "delay": 25,
+                     "startup": 40, "recovery": 30, "damage": 240, "hitstun": 45, "launch": 0.3, "impact": "crushing" }
+    }
+  ],
+
+  "maps": [
+    {
+      "id": "frozen_shrine",
+      "name": "Frozen Shrine",
+      "radius": 60,
+      "obstacles": [
+        { "x": 0,   "z": 0,   "width": 12, "depth": 8,  "height": 8,  "hp": 1000 },
+        { "x": 25,  "z": 10,  "width": 4,  "depth": 4,  "height": 6,  "hp": 300 },
+        { "x": -25, "z": -10, "width": 4,  "depth": 4,  "height": 6,  "hp": 300 },
+        { "x": 10,  "z": -30, "width": 10, "depth": 3,  "height": 4,  "hp": 400 }
+      ],
+      "zones": [[0, 15], [30, -20], [-30, 20]]
+    }
+  ],
+
+  "cursedObjects": [
+    {
+      "id": "frozen_heart",
+      "name": "Frozen Heart",
+      "description": "You take less damage but move slower.",
+      "effects": { "damageTakenPct": -15, "speedPct": -10 }
+    }
+  ],
+
+  "outfits": [
+    {
+      "id": "fur_collar_coat",
+      "name": "Fur Collar Coat",
+      "slot": "top",
+      "meshMasculine": "/Game/Mods/ExampleMod/FurCoat_M",
+      "meshFeminine": "/Game/Mods/ExampleMod/FurCoat_F",
+      "unlock": { "kind": "matchesWithTechnique", "technique": "frost_bloom", "amount": 5 }
+    }
+  ]
+}

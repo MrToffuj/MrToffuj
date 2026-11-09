@@ -95,7 +95,12 @@ const panel = (f, right, label) => {
    <div class="bar" style="${x};top:52px;width:38%"><div class="fill" style="width:${Math.max(0,f.hp)*100}%;background:#e6332a;${right?'margin-left:auto':''}"></div></div>
    <div class="bar" style="${x};top:86px;width:30%;height:12px"><div class="fill" style="width:70%;background:#3399ff;${right?'margin-left:auto':''}"></div></div>`);
 };
-if (view === 'chase') { panel(me, false, 'P1'); panel(tgt, true, 'BOT ' + (me.target + 1)); }
+if (view === 'chase') {
+  panel(me, false, 'P1');
+  // enemies never show their health
+  hud.insertAdjacentHTML('beforeend', `<div class="lbl" style="right:40px;top:20px;color:#${teamColor(tgt.team).getHexString()}">BOT ${me.target + 1}</div>
+    <div class="lbl" style="right:40px;top:52px;color:#ff6a4d">LOCKED ON</div>`);
+}
 hud.insertAdjacentHTML('beforeend', `<div class="lbl" style="left:0;right:0;top:${view==='chase'?120:20}px;text-align:center;font-size:${view==='chase'?16:22}px">${data.map.toUpperCase()} · ${view==='chase'?(q.get('label')||'OPEN BRAWL'):'COLONY OVERVIEW'} · frame ${data.frame}</div>`);
 document.title = 'done';
 </script></body></html>

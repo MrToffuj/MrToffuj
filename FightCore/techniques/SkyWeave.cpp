@@ -65,6 +65,7 @@ const SkyLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "sky_weave";
     t.name = "Sky Weave";
     t.coreRule = "The sky becomes a film to fold. Film charges build over time and are spent by the skills.";
     t.weakness = "Needs time to build film, any hit tears it.";

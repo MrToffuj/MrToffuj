@@ -76,6 +76,7 @@ const PuppetLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "puppet_pilot";
     t.name = "Puppet Pilot";
     t.coreRule = "A remote battle frame fights for you, every skill is an order to it.";
     t.weakness = "Lose the frame and the technique is gone for the round.";

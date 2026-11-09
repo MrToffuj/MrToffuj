@@ -17,7 +17,8 @@ namespace fc {
 // Mod + Guard (hold)      Reverse Flow
 // Mod + Dash              toggle reinforcement
 // Assist (R3)             call a companion
-// Target (L3)             cycle lock-on
+// Target (L3)             lock on / let go
+// right stick flick       next target while locked
 enum Button : uint16_t {
     BtnLight = 1 << 0,
     BtnHeavy = 1 << 1,
@@ -29,16 +30,24 @@ enum Button : uint16_t {
     BtnUlt   = 1 << 7,
     BtnAssist = 1 << 8,
     BtnTarget = 1 << 9,
+    BtnTargetNext = 1 << 10,
 };
 
 // Numpad notation as seen from the camera behind the fighter:
 // 7 8 9   8 = toward the target, 2 = away
 // 4 5 6   4/6 = circle around it
 // 1 2 3
+// Players without lock-on move relative to their camera, so the client sends a world space
+// direction (moveX/moveZ, -127..127). The simulation turns it into dir itself. Bots and locked
+// players can send dir directly and leave move at zero.
 struct FrameInput {
     uint8_t dir = 5;
     uint16_t buttons = 0;
     uint16_t consumed = 0;
+    int8_t moveX = 0;
+    int8_t moveZ = 0;
+
+    bool hasWorldMove() const { return moveX != 0 || moveZ != 0; }
 };
 
 class InputBuffer {

@@ -129,6 +129,7 @@ const HoardLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "spirit_hoard";
     t.name = "Spirit Hoard";
     t.coreRule = "Up to three absorbed spirits fight for you.";
     t.weakness = "An empty pool leaves you bare, and spirits can be killed.";

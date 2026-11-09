@@ -62,6 +62,7 @@ const ArsenalLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "tool_arsenal";
     t.name = "Tool Arsenal";
     t.coreRule = "No CE, a wheel of cursed tools. Using one equips it and boosts your plain attacks.";
     t.weakness = "No CE and no Reverse Flow, ranged builds can keep you out.";

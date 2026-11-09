@@ -99,6 +99,7 @@ const ShadowLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "shadow_puppets";
     t.name = "Shadow Puppets";
     t.coreRule = "Shadow pool: up to two shadow beasts fight alongside you.";
     t.weakness = "Fallen beasts are gone for the round.";

@@ -91,6 +91,7 @@ ModeRules rulesFor(GameMode mode) {
             r.fighters = kMaxFighters;
             r.respawnFrames = 300;
             r.objective = Objective::None;
+            r.cursedObjectSlots = 2;
             r.map = &maps::oldCapital();
             break;
         case GameMode::Custom:
@@ -101,6 +102,7 @@ ModeRules rulesFor(GameMode mode) {
             r.scoreLimit = 50;
             r.objective = Objective::Deathmatch;
             r.map = &maps::oldCapital();
+            r.cursedObjectSlots = 3;
             break;
     }
     return r;
@@ -119,6 +121,27 @@ void MatchSetup::finalize() {
         else if (loadout[i].team >= rules.teamCount) loadout[i].team = static_cast<uint8_t>(loadout[i].team % rules.teamCount);
         stats[i] = deriveStats(*loadout[i].body);
         oath[i] = evaluateOath(loadout[i].oath, *loadout[i].body, loadout[i].technique, loadout[i].profile);
+
+        // only as many cursed objects as the mode allows
+        items[i] = ItemModifiers{};
+        const int slots = rules.cursedObjectSlots < kMaxCursedObjects ? rules.cursedObjectSlots : kMaxCursedObjects;
+        for (int k = 0; k < slots; ++k)
+            if (loadout[i].cursed[k]) items[i].add(*loadout[i].cursed[k]);
+        const ItemModifiers& it = items[i];
+        BodyStats& st = stats[i];
+        st.maxHealth = static_cast<int16_t>(st.maxHealth * it.pct(Effect::MaxHealthPct) / 100);
+        st.ceMax = st.ceMax * it.pct(Effect::CeMaxPct) / 100;
+        st.ceRegen = st.ceRegen * it.pct(Effect::CeRegenPct) / 100;
+        st.damagePct = static_cast<int16_t>(st.damagePct * it.pct(Effect::DamagePct) / 100);
+        st.cooldownPct = static_cast<int16_t>(st.cooldownPct * it.pct(Effect::CooldownPct) / 100);
+        st.realmGainPct = static_cast<int16_t>(st.realmGainPct * it.pct(Effect::RealmGainPct) / 100);
+        st.blackSparkWindow = static_cast<int16_t>(st.blackSparkWindow + it[Effect::BlackSparkWindow]);
+        st.parryWindow = static_cast<int16_t>(st.parryWindow + it[Effect::ParryWindow]);
+        const Fx speed = Fx::ratio(it.pct(Effect::SpeedPct), 100);
+        st.walkSpeed = st.walkSpeed * speed;
+        st.backSpeed = st.backSpeed * speed;
+        st.sideSpeed = st.sideSpeed * speed;
+        st.dashSpeed = st.dashSpeed * speed;
     }
     detail::buildRoster(*this);
 }
@@ -285,17 +308,57 @@ int nearestEnemy(const MatchState& m, int i) {
     return best;
 }
 
+// Numpad direction of a world space vector relative to the facing
+uint8_t numpadFrom(Vec3 facing, Vec3 v) {
+    const Fx len = length(v);
+    if (len.raw == 0) return 5;
+    const Vec3 right{facing.z, Fx{}, -facing.x};
+    const Fx fwd = dot(v, facing), side = dot(v, right), cut = len * Fx::ratio(38, 100);
+    const int vert = fwd > cut ? 1 : (fwd < -cut ? -1 : 0);
+    const int horiz = side > cut ? 1 : (side < -cut ? -1 : 0);
+    static const uint8_t numpad[3][3] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+    return numpad[vert + 1][horiz + 1];
+}
+
+Vec3 worldMove(const FrameInput& in) { return {Fx::fromInt(in.moveX), Fx{}, Fx::fromInt(in.moveZ)}; }
+
+// What L3 locks on to: something in front of you beats something slightly closer behind you
+int lockCandidate(const MatchState& m, int i) {
+    const FighterState& f = m.f[i];
+    int best = -1;
+    Fx bestScore{};
+    for (int j = 0; j < m.count; ++j) {
+        if (!isEnemy(m, i, j) || m.f[j].out) continue;
+        const Vec3 d{m.f[j].pos.x - f.pos.x, Fx{}, m.f[j].pos.z - f.pos.z};
+        const Fx dist = length(d);
+        if (dist > Fx::fromInt(30)) continue;
+        const Fx score = dist - dot(normalizeXZ(d, f.facing), f.facing) * Fx::fromInt(4);
+        if (best < 0 || score < bestScore) { best = j; bestScore = score; }
+    }
+    return best;
+}
+
 void updateTarget(MatchState& m, int i) {
     FighterState& f = m.f[i];
-    const bool valid = f.target >= 0 && isEnemy(m, i, f.target) && !m.f[f.target].out;
     if (f.input.pressedWithin(BtnTarget, 3)) {
         f.input.consume(BtnTarget, 3);
-        // next living enemy by index
-        for (int k = 1; k <= m.count; ++k) {
-            const int j = (f.target + k + m.count) % m.count;
-            if (isEnemy(m, i, j) && !m.f[j].out) { f.target = static_cast<int8_t>(j); f.manualTarget = true; return; }
+        if (f.lockOn) {
+            f.lockOn = false;
+            f.manualTarget = false;
+        } else if (const int t = lockCandidate(m, i); t >= 0) {
+            f.target = static_cast<int8_t>(t);
+            f.lockOn = true;
+            f.manualTarget = true;
         }
     }
+    if (f.lockOn && f.input.pressedWithin(BtnTargetNext, 3)) {
+        f.input.consume(BtnTargetNext, 3);
+        for (int k = 1; k <= m.count; ++k) {
+            const int j = (f.target + k + m.count) % m.count;
+            if (isEnemy(m, i, j) && !m.f[j].out) { f.target = static_cast<int8_t>(j); f.manualTarget = true; break; }
+        }
+    }
+    const bool valid = f.target >= 0 && isEnemy(m, i, f.target) && !m.f[f.target].out;
     if (!valid) {
         f.target = static_cast<int8_t>(nearestEnemy(m, i));
         f.manualTarget = false;
@@ -384,6 +447,15 @@ Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
 
 void startMove(MatchState& m, const MatchSetup& s, int i, const Cmd& c, Ev ev) {
     FighterState& f = m.f[i];
+    if (!f.lockOn) {
+        // soft aim: snap to an enemy that's close and roughly in front
+        const int t = nearestEnemy(m, i);
+        if (t >= 0) {
+            const Vec3 d = m.f[t].pos - f.pos;
+            if (distXZ(m.f[t].pos, f.pos) < Fx::fromInt(4) && dot(normalizeXZ(d, f.facing), f.facing) > Fx{})
+                f.facing = normalizeXZ(d, f.facing);
+        }
+    }
     const MoveDef& mv = moveOf(s, i, c.move);
     f.state = FState::Attack;
     f.moveId = c.move;
@@ -500,9 +572,12 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
     if (f.input.pressAge(BtnGuard, 1) == 0) f.guardPressFrame = m.frame;
     updateTarget(m, i);
 
-    if (f.target >= 0 && f.state != FState::Attack && f.state != FState::Hitstun && f.state != FState::Locked &&
+    const bool freeMove = !f.lockOn && in.hasWorldMove();
+    if (f.lockOn && f.target >= 0 && f.state != FState::Attack && f.state != FState::Hitstun && f.state != FState::Locked &&
         f.state != FState::Clash)
         f.facing = normalizeXZ(m.f[f.target].pos - f.pos, f.facing);
+    else if (freeMove && (f.state == FState::Idle || f.state == FState::Walk || f.state == FState::Guard))
+        f.facing = normalizeXZ(worldMove(in), f.facing); // free movement turns you where you're going
 
     // CE burst works out of hitstun
     if (f.state == FState::Hitstun || f.state == FState::Blockstun) {
@@ -538,6 +613,7 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
                 const bool dodge = f.input.held(BtnGuard);
                 Vec3 dir = in.dir == 2 ? f.facing * Fx::fromInt(-1) : f.facing;
                 if (in.dir == 4 || in.dir == 6) dir = normalizeXZ(dirToVelocity(f, st, in.dir, 100), f.facing);
+                if (freeMove) dir = f.facing;
                 f.vel = dir * (st.dashSpeed * Fx::ratio(speedPctOf(m, s, i), 100));
                 f.state = dodge ? FState::Dodge : FState::Dash;
                 f.stateFrame = 0;
@@ -546,7 +622,8 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
             }
             if (f.input.pressedWithin(BtnJump, 3)) {
                 f.input.consume(BtnJump, 3);
-                Vec3 h = dirToVelocity(f, st, in.dir, speedPctOf(m, s, i));
+                Vec3 h = freeMove ? f.facing * (st.walkSpeed * Fx::ratio(speedPctOf(m, s, i), 100))
+                                  : dirToVelocity(f, st, in.dir, speedPctOf(m, s, i));
                 f.vel = {h.x, st.jumpVelocity, h.z};
                 f.state = FState::Air;
                 f.grounded = false;
@@ -554,8 +631,13 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
                 break;
             }
             if ((in.buttons & BtnGuard) && !pm.noBlock) { f.state = FState::Guard; f.vel = {}; break; }
-            f.vel = dirToVelocity(f, st, in.dir, speedPctOf(m, s, i));
-            f.state = (in.dir == 5) ? FState::Idle : FState::Walk;
+            if (freeMove) {
+                f.vel = f.facing * (st.walkSpeed * Fx::ratio(speedPctOf(m, s, i), 100));
+                f.state = FState::Walk;
+            } else {
+                f.vel = dirToVelocity(f, st, in.dir, speedPctOf(m, s, i));
+                f.state = (in.dir == 5) ? FState::Idle : FState::Walk;
+            }
             break;
         }
         case FState::Dash:
@@ -838,8 +920,19 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     if (a.reinforce) dmg = dmg * 120 / 100;
     if (d.reinforce && ceAttack) dmg = dmg * 80 / 100;
     if (mv.category == MoveCategory::Grab && s.loadout[atk].body->has(PassiveStrongGrab)) dmg = dmg * 150 / 100;
+    const ItemModifiers& ai = s.items[atk];
+    const ItemModifiers& di_ = s.items[di];
+    if (mv.category == MoveCategory::Normal || mv.category == MoveCategory::Grab) dmg = dmg * ai.pct(Effect::NormalDamagePct) / 100;
+    if (!fromCompanion && h.moveId >= kTechMoveOffset) dmg = dmg * ai.pct(Effect::SkillDamagePct) / 100;
+    if (ai[Effect::OvertimeDamagePct] && m.frame - a.spawnFrame >= 3600) dmg = dmg * ai.pct(Effect::OvertimeDamagePct) / 100;
+    dmg = dmg * di_.pct(Effect::DamageTakenPct) / 100;
+    if (ai[Effect::CritChancePct] > 0) {
+        uint32_t roll = static_cast<uint32_t>(m.frame) * 2654435761u ^ static_cast<uint32_t>(atk * 97 + di * 13);
+        roll ^= roll >> 15;
+        if (static_cast<int>(roll % 100) < ai[Effect::CritChancePct]) dmg *= 2;
+    }
     if (fromCompanion) {
-        dmg = dmg * kCompanionDamagePct / 100;
+        dmg = dmg * kCompanionDamagePct / 100 * ai.pct(Effect::CompanionDamagePct) / 100;
         if (h.link) dmg = dmg * 125 / 100;
     }
     if (!h.projectile && !fromCompanion && s.loadout[atk].body->has(PassiveFlankCrit) && dot(d.facing, h.dir) > Fx::ratio(-1, 2))
@@ -874,6 +967,12 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     }
 
     d.health = static_cast<int16_t>(d.health - dmg);
+    if (ai[Effect::LifestealPct] > 0) {
+        const int heal = dmg * ai[Effect::LifestealPct] / 100;
+        a.health = static_cast<int16_t>(a.health + heal > s.stats[atk].maxHealth ? s.stats[atk].maxHealth : a.health + heal);
+    }
+    if (di_[Effect::ThornsPct] > 0 && !h.projectile && !fromCompanion)
+        a.health = static_cast<int16_t>(a.health - dmg * di_[Effect::ThornsPct] / 100);
     d.state = FState::Hitstun;
     d.stun = p.hitstun;
     d.moveId = -1;
@@ -1061,7 +1160,7 @@ void tickRealms(MatchState& m, const MatchSetup& s, Ev ev) {
             if (!realmAffects(m, s, o, t)) continue;
             FighterState& tf = m.f[t];
             if (cls == RealmClass::Damage && elapsed % 30 == 0) {
-                tf.health = static_cast<int16_t>(tf.health - (bond3 ? 25 : 20));
+                tf.health = static_cast<int16_t>(tf.health - (bond3 ? 25 : 20) * s.items[t].pct(Effect::GuaranteedHitTakenPct) / 100);
                 tf.lastHitBy = static_cast<int8_t>(o);
                 emit(ev, m, ImpactKind::GuaranteedHit, o, ImpactClass::Medium, tf.pos, {}, Fx{}, 0);
             } else if (cls == RealmClass::Lock && elapsed % 200 == 0 && tf.state != FState::Attack) {
@@ -1124,6 +1223,9 @@ void resetFighter(MatchState& m, const MatchSetup& s, int i, bool matchStart) {
     f = FighterState{};
     f.team = s.loadout[i].team;
     f.input = keep.input;
+    f.lockOn = s.loadout[i].lockOnAtStart || s.loadout[i].bot;
+    f.spawnFrame = m.frame;
+    f.realmMeter = static_cast<int16_t>(kRealmMeterMax * s.items[i][Effect::StartRealmMeterPct] / 100);
     if (!matchStart) {
         f.kos = keep.kos;
         f.deaths = keep.deaths;
@@ -1159,6 +1261,9 @@ void handleKnockouts(MatchState& m, const MatchSetup& s, Ev ev) {
         const int killer = f.lastHitBy;
         if (killer >= 0 && killer != i) {
             ++m.f[killer].kos;
+            FighterState& k = m.f[killer];
+            const int heal = s.items[killer][Effect::HealOnKo];
+            if (heal > 0 && !k.out) k.health = static_cast<int16_t>(k.health + heal > s.stats[killer].maxHealth ? s.stats[killer].maxHealth : k.health + heal);
             if (s.rules.objective == Objective::Deathmatch && isEnemy(m, killer, i)) ++m.objective.score[m.f[killer].team];
         }
         for (CompanionState& c : f.comp) c = CompanionState{};
@@ -1332,8 +1437,11 @@ MatchState createMatch(const MatchSetup& s) {
 void step(MatchState& m, const MatchSetup& s, const FrameInput inputs[], EventSink* ev) {
     if (m.winner != kNoWinner) return;
     const int n = m.count;
-    for (int i = 0; i < n; ++i)
-        m.f[i].input.push(s.loadout[i].bot ? botInput(m, s, i) : inputs[i]);
+    for (int i = 0; i < n; ++i) {
+        FrameInput in = s.loadout[i].bot ? botInput(m, s, i) : inputs[i];
+        if (in.hasWorldMove()) in.dir = numpadFrom(m.f[i].facing, worldMove(in));
+        m.f[i].input.push(in);
+    }
 
     bool frozen[kMaxFighters];
     for (int i = 0; i < n; ++i) {
@@ -1386,7 +1494,10 @@ struct Hasher {
 uint64_t InputBuffer::hash(uint64_t h) const {
     Hasher x{h};
     x.add(head_);
-    for (const FrameInput& in : hist_) x.add(static_cast<uint64_t>(in.dir | (in.buttons << 8) | (static_cast<uint64_t>(in.consumed) << 24)));
+    for (const FrameInput& in : hist_)
+        x.add(static_cast<uint64_t>(in.dir | (in.buttons << 8) | (static_cast<uint64_t>(in.consumed) << 24) |
+                                    (static_cast<uint64_t>(static_cast<uint8_t>(in.moveX)) << 40) |
+                                    (static_cast<uint64_t>(static_cast<uint8_t>(in.moveZ)) << 48)));
     return x.h;
 }
 
@@ -1403,7 +1514,8 @@ uint64_t hashState(const MatchState& m) {
         for (int16_t c : f.cooldown) x.addInt(c);
         x.addInt(static_cast<int>(f.state)); x.addInt(f.armorLeft);
         x.addInt(f.moveHasHit | (f.grounded << 1) | (f.launched << 2) | (f.reinforce << 3) | (f.maxOutputUsed << 4) |
-                 (f.manualTarget << 5) | (f.out << 6));
+                 (f.manualTarget << 5) | (f.out << 6) | (f.lockOn << 7));
+        x.addInt(f.spawnFrame);
         x.h = f.input.hash(x.h);
         for (int32_t t : f.tech) x.addInt(t);
         x.addInt(f.lostMask); x.addInt(f.bond);

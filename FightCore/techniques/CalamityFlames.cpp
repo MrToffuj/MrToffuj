@@ -76,6 +76,7 @@ const CalamityFlamesLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
+    t.id = "calamity_flames";
     t.name = "Calamity Flames";
     t.coreRule = "Heat stacks: technique hits set the target on fire.";
     t.weakness = "Needs setup, long startup.";

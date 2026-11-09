@@ -60,6 +60,7 @@ struct ObstacleDef {
 };
 
 struct MapDef {
+    const char* id = "";
     const char* name = "";
     Fx radius = Fx::fromInt(14);
     std::vector<ObstacleDef> obstacles;

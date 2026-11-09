@@ -6,6 +6,11 @@
 #include <vector>
 
 #include "Techniques.h"
+#include <fstream>
+#include <sstream>
+
+#include "fightcore/Json.h"
+#include "fightcore/Registry.h"
 #include "fightcore/Session.h"
 #include "fightcore/Simulation.h"
 
@@ -318,10 +323,11 @@ static void testScenery() {
     const MatchSetup s = makeSetup(bodies::brawler(), &calamityFlames(), bodies::brawler(), &calamityFlames());
     MatchState m = createMatch(s);
     EventSink ev;
-    // Shrine Ward has a pillar at x = 7; keep throwing P2 into it
+    // keep throwing P2 into the first pillar
+    const ObstacleDef& pillar = mapOf(s).obstacles[0];
     for (int hit = 0; hit < 20 && !m.obstacles[0].broken; ++hit) {
         FighterState& f = m.f[1];
-        f.pos = {Fx::ratio(55, 10), Fx{}, Fx{}};
+        f.pos = {pillar.center.x - pillar.halfX - Fx::ratio(15, 10), Fx{}, pillar.center.z};
         f.vel = {Fx::ratio(6, 10), Fx{}, Fx{}};
         f.state = FState::Hitstun;
         f.stun = 20;
@@ -333,7 +339,7 @@ static void testScenery() {
     ev.clear();
     for (int hit = 0; hit < 30; ++hit) {
         FighterState& f = m.f[1];
-        f.pos = {Fx{}, Fx{}, Fx::fromInt(12)};
+        f.pos = {Fx{}, Fx{}, mapOf(s).radius - Fx::fromInt(2)};
         f.vel = {Fx{}, Fx{}, Fx::fromInt(1)};
         f.state = FState::Hitstun;
         f.stun = 20;
@@ -639,17 +645,37 @@ static void testTeamsNoFriendlyFire() {
     CHECK(m.winner == 0);
 }
 
-static void testTargetSwitch() {
-    std::puts("lock-on: nearest enemy + switching");
+static void testLockOn() {
+    std::puts("lock-on: L3 locks and lets go, flick switches, free movement follows the stick");
     MatchSetup s = buildMatch(GameMode::Brawl, nullptr, 0, 1, 3);
-    for (int i = 0; i < s.count; ++i) s.loadout[i].bot = false;
+    for (int i = 0; i < s.count; ++i) { s.loadout[i].bot = false; s.loadout[i].lockOnAtStart = false; }
     MatchState m = createMatch(s);
-    CHECK(m.f[0].target >= 0 && m.f[0].target != 0);
-    const int first = m.f[0].target;
+    CHECK(!m.f[0].lockOn);
+
+    // free movement: stick to world +x, the fighter turns and walks that way
+    const Fx x0 = m.f[0].pos.x;
     FrameInput in[kMaxFighters] = {};
-    in[0].buttons = BtnTarget;
-    step(m, s, in);
-    CHECK(m.f[0].target != first && m.f[0].manualTarget);
+    in[0].moveX = 127;
+    for (int f = 0; f < 20; ++f) step(m, s, in);
+    CHECK(m.f[0].pos.x > x0 && m.f[0].facing.x > Fx::ratio(9, 10));
+
+    // move next to an enemy and lock on
+    const int enemy = 5;
+    m.f[enemy].pos = m.f[0].pos + Vec3{Fx::fromInt(3), Fx{}, Fx{}};
+    FrameInput lock[kMaxFighters] = {};
+    lock[0].buttons = BtnTarget;
+    step(m, s, lock);
+    CHECK(m.f[0].lockOn && m.f[0].target == enemy);
+    step(m, s, none20);
+
+    FrameInput flick[kMaxFighters] = {};
+    flick[0].buttons = BtnTargetNext;
+    step(m, s, flick);
+    CHECK(m.f[0].lockOn && m.f[0].target != enemy);
+    step(m, s, none20);
+
+    step(m, s, lock);
+    CHECK(!m.f[0].lockOn);
 }
 
 static void testBotFightsBack() {
@@ -836,7 +862,9 @@ static void testFriendlyFireAndFfaDeathmatch() {
 
 static void testBotsPlayObjective() {
     std::puts("bots: 20 bots playing capture the flag score");
-    const MatchSetup s = buildMatch(GameMode::Custom, customRules(Objective::CaptureTheFlag, 2), nullptr, 0, 2, 21);
+    ModeRules rules = customRules(Objective::CaptureTheFlag, 2);
+    rules.map = &maps::harborDistrict();
+    const MatchSetup s = buildMatch(GameMode::Custom, rules, nullptr, 0, 2, 21);
     MatchState m = createMatch(s);
     bool taken = false;
     EventSink ev;
@@ -1020,6 +1048,130 @@ static void testLightRecoil() {
     CHECK(d.m.f[0].health == 1 && !d.m.f[0].out);
 }
 
+// ---- cursed objects, outfits, mods
+
+static void testCursedObjects() {
+    std::puts("cursed objects: only count where the mode allows them");
+    const CursedObjectDef* finger = cursed::find("withered_finger");
+    const CursedObjectDef* cube = cursed::find("sealed_cube");
+    CHECK(finger && cube && cursed::builtins().size() >= 15);
+
+    // duel: slots are off, nothing happens
+    MatchSetup duel = makeSetup(bodies::brawler(), &calamityFlames(), bodies::brawler(), &calamityFlames());
+    duel.loadout[0].cursed[0] = finger;
+    duel.finalize();
+    CHECK(duel.items[0][Effect::DamagePct] == 0);
+
+    // custom with three slots: finger + cube are active, a fourth item is ignored
+    ModeRules r = rulesFor(GameMode::Custom);
+    r.fighters = 2;
+    r.teamCount = 0;
+    r.cursedObjectSlots = 2;
+    Loadout humans[2] = {{&bodies::brawler(), &calamityFlames(), {}, {}, nullptr, 0}, {&bodies::brawler(), &calamityFlames(), {}, {}, nullptr, 0}};
+    humans[0].cursed = {finger, cube, cursed::find("lucky_ball")};
+    MatchSetup s = buildMatch(GameMode::Custom, r, humans, 2, 1, 1);
+    CHECK(s.items[0][Effect::DamagePct] == 15 && s.items[0][Effect::StartRealmMeterPct] == 50 && s.items[0][Effect::CritChancePct] == 0);
+    MatchState m = createMatch(s);
+    CHECK(m.f[0].realmMeter == kRealmMeterMax / 2 && m.f[1].realmMeter == 0);
+    CHECK(s.stats[0].damagePct > s.stats[1].damagePct);
+}
+
+static void testOutfits() {
+    std::puts("outfits: both cuts on both bodies, unlocks");
+    for (const OutfitDef* o : outfits::builtins())
+        CHECK(std::string_view(o->meshMasculine).size() > 0 && std::string_view(o->meshFeminine).size() > 0);
+    PlayerRecord rec;
+    const OutfitDef* kesa = Registry::instance().outfit("five_color_kesa");
+    const OutfitDef* jacket = Registry::instance().outfit("academy_jacket");
+    CHECK(kesa && jacket && isUnlocked(*jacket, rec) && !isUnlocked(*kesa, rec));
+    rec.matchesWithTechnique["spirit_hoard"] = 10;
+    CHECK(isUnlocked(*kesa, rec));
+    // any cut on any body
+    Appearance look;
+    look.body = BodyType::Male;
+    look.pieces[static_cast<size_t>(OutfitSlot::Bottom)] = {Registry::instance().outfit("academy_skirt"), Cut::Feminine};
+    look.body = BodyType::Female;
+    look.pieces[static_cast<size_t>(OutfitSlot::Top)] = {jacket, Cut::Masculine};
+    CHECK(look.pieces[static_cast<size_t>(OutfitSlot::Top)].item == jacket);
+}
+
+static std::string readFile(const char* path) {
+    std::ifstream f(path);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
+static void testMods() {
+    std::puts("mods: load the example mod, fight with its technique, reject broken mods");
+    Registry& reg = Registry::instance();
+    reg.unloadMods();
+    const uint64_t vanilla = reg.contentHash();
+    const std::string text = readFile(FC_EXAMPLE_MOD);
+    CHECK(!text.empty());
+    std::string err;
+    CHECK(reg.loadMod(text, &err));
+    if (!err.empty()) std::printf("  %s\n", err.c_str());
+    CHECK(reg.contentHash() != vanilla && reg.mods().size() == 1);
+    const TechniqueDef* frost = reg.technique("frost_bloom");
+    const MapDef* shrine = reg.map("frozen_shrine");
+    CHECK(frost && shrine && reg.cursedObject("frozen_heart") && reg.outfit("fur_collar_coat"));
+    CHECK(shrine && shrine->obstacles.size() == 4 && shrine->radius == Fx::fromInt(60));
+
+    // loading the same mod twice is refused
+    CHECK(!reg.loadMod(text, &err));
+
+    // the modded technique works in a real fight: beam, summon, counter, max output
+    if (frost) {
+        Duel d(frost);
+        d.m.f[1].pos = d.m.f[0].pos + Vec3{Fx{}, Fx{}, Fx::fromInt(5)};
+        d.cast(BtnMod | BtnLight, 40);
+        CHECK(d.hpLost() > 0);
+        d.cast(BtnMod | BtnHeavy, 20);
+        TechContext ctx{d.m, d.s, 0, nullptr};
+        CHECK(ctx.companionSlot(0) >= 0);
+        d.m.f[1].pos = d.m.f[0].pos + d.m.f[0].facing * Fx::ratio(14, 10);
+        const int16_t before = d.m.f[1].health;
+        run(d.m, d.s, 25, [](int f, FrameInput& p0, FrameInput& p1) {
+            if (f == 0) p0.buttons = BtnMod | BtnGrab;
+            if (f == 3) p1.buttons = BtnLight;
+        });
+        CHECK(d.m.f[1].health < before);
+        d.cast(BtnUlt, 90);
+        CHECK(d.m.f[0].maxOutputUsed);
+    }
+
+    // a modded map runs and keeps everyone inside
+    if (shrine) {
+        ModeRules r = rulesFor(GameMode::Brawl);
+        r.map = shrine;
+        r.fighters = 8;
+        const MatchSetup s = buildMatch(GameMode::Brawl, r, nullptr, 0, 1, 3);
+        MatchState m = createMatch(s);
+        for (int f = 0; f < 1200; ++f) step(m, s, none20);
+        for (int i = 0; i < m.count; ++i) CHECK(length(Vec3{m.f[i].pos.x, Fx{}, m.f[i].pos.z}) <= shrine->radius);
+    }
+
+    // broken mods are rejected without leaving anything behind
+    const size_t techniques = reg.techniques().size();
+    CHECK(!reg.loadMod(R"({"id":"broken","techniques":[{"id":"x","skills":[]}]})", &err));
+    CHECK(!reg.loadMod(R"({"id":"broken2","cursedObjects":[{"id":"y","effects":{"flying":10}}]})", &err));
+    CHECK(!reg.loadMod(R"({"id":"broken3", )", &err));
+    CHECK(!reg.loadMod(R"({"id":"broken4","techniques":[{"id":"boundless","skills":[{},{},{}],"maxOutput":{}}]})", &err));
+    CHECK(reg.techniques().size() == techniques);
+    reg.unloadMods();
+    CHECK(!reg.technique("frost_bloom") && reg.contentHash() == vanilla);
+}
+
+static void testJsonNumbers() {
+    std::puts("json: exact fixed point numbers");
+    json::Value v;
+    CHECK(json::parse(R"({"a": 1.5, "b": -0.25, "c": 12, "d": "x", "e": [1, 2]})", v));
+    CHECK(v.fxOr("a", {}) == Fx::ratio(3, 2) && v.fxOr("b", {}) == Fx::ratio(-1, 4) && v.intOr("c", 0) == 12);
+    CHECK(v.stringOr("d", "") == "x" && v.get("e")->items.size() == 2);
+    CHECK(!json::parse("{\"a\": 1e5}", v));
+}
+
 int main() {
     testBodiesBalanced();
     testDeterminismAndRollback();
@@ -1049,7 +1201,7 @@ int main() {
     testCompanionOaths();
     testRollbackSession();
     testTeamsNoFriendlyFire();
-    testTargetSwitch();
+    testLockOn();
     testBotFightsBack();
     testBrawl20Bots();
     testSessionTeams();
@@ -1069,6 +1221,10 @@ int main() {
     testPuppetFrame();
     testSpiritAbsorb();
     testLightRecoil();
+    testCursedObjects();
+    testOutfits();
+    testJsonNumbers();
+    testMods();
     if (g_failed) { std::printf("%d check(s) failed\n", g_failed); return EXIT_FAILURE; }
     std::puts("all tests passed");
     return EXIT_SUCCESS;

@@ -1,6 +1,7 @@
 #pragma once
 #include "fightcore/Body.h"
 #include "fightcore/Companion.h"
+#include "fightcore/CursedObject.h"
 #include "fightcore/Events.h"
 #include "fightcore/Oath.h"
 #include "fightcore/State.h"
@@ -34,6 +35,7 @@ struct ModeRules {
     int16_t scoreLimit = 0;       // 0 = none
     Objective objective = Objective::Elimination;
     const MapDef* map = nullptr;
+    uint8_t cursedObjectSlots = 0; // 0 = cursed objects off, custom lobbies allow up to 5
 };
 ModeRules rulesFor(GameMode mode);
 
@@ -56,6 +58,8 @@ struct Loadout {
     uint8_t team = 0;
     bool bot = false;
     uint8_t botLevel = 1;  // 0 easy, 1 normal, 2 hard
+    bool lockOnAtStart = true;  // humans in the game start free and lock on with L3
+    std::array<const CursedObjectDef*, kMaxCursedObjects> cursed{};
 };
 
 struct MatchSetup {
@@ -67,6 +71,7 @@ struct MatchSetup {
     // filled in by finalize()
     BodyStats stats[kMaxFighters];
     OathResult oath[kMaxFighters];
+    ItemModifiers items[kMaxFighters];
     // companion roster: [summoner assist][technique companions...][oath companion]
     const CompanionDef* roster[kMaxFighters][kRosterMax] = {};
     int8_t rosterCount[kMaxFighters] = {};

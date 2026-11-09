@@ -30,6 +30,19 @@ struct FFightBindings
 	UPROPERTY(EditAnywhere, Category = "Directions") TArray<FKey> Right;
 };
 
+UENUM(BlueprintType)
+enum class EFightBodyType : uint8 { Male, Female };
+
+// One clothing item and which cut to wear. Every cut fits every body.
+USTRUCT(BlueprintType)
+struct FFightOutfitPick
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Outfit") FName Item;
+	UPROPERTY(EditAnywhere, Category = "Outfit") bool bFeminineCut = false;
+};
+
 USTRUCT(BlueprintType)
 struct FFightLoadout
 {
@@ -39,6 +52,12 @@ struct FFightLoadout
 	UPROPERTY(EditAnywhere, Category = "Loadout") EFightTechnique Technique = EFightTechnique::CalamityFlames;
 	UPROPERTY(EditAnywhere, Category = "Loadout") EFightAssist Assist = EFightAssist::BladeWolf;
 	UPROPERTY(EditAnywhere, Category = "Loadout", meta = (ClampMin = "0", ClampMax = "19")) int32 Team = 0;
+	// Set to a technique id from a mod to use it instead of Technique
+	UPROPERTY(EditAnywhere, Category = "Loadout") FName ModTechnique;
+	// Ids of cursed objects, only as many count as the mode allows
+	UPROPERTY(EditAnywhere, Category = "Loadout") TArray<FName> CursedObjects;
+	UPROPERTY(EditAnywhere, Category = "Appearance") EFightBodyType BodyType = EFightBodyType::Male;
+	UPROPERTY(EditAnywhere, Category = "Appearance") TArray<FFightOutfitPick> Outfit;
 };
 
 USTRUCT(BlueprintType)
@@ -57,6 +76,9 @@ struct FFightCustomRules
 	UPROPERTY(EditAnywhere, Category = "Custom", meta = (ClampMin = "0")) int32 TimeLimitMinutes = 10;
 	// Ignored for elimination
 	UPROPERTY(EditAnywhere, Category = "Custom", meta = (ClampMin = "1")) int32 RespawnSeconds = 5;
+	UPROPERTY(EditAnywhere, Category = "Custom", meta = (ClampMin = "0", ClampMax = "5")) int32 CursedObjectSlots = 3;
+	// Map id from a mod, overrides Map when set
+	UPROPERTY(EditAnywhere, Category = "Custom") FName ModMap;
 };
 
 UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "Fight Game"))
@@ -93,6 +115,12 @@ public:
 	float CameraFOV = 60.f;
 	UPROPERTY(Config, EditAnywhere, Category = "Camera", meta = (ClampMin = "1", ClampMax = "30"))
 	float CameraFollowSpeed = 10.f;
+	// degrees per second at full right stick, without lock-on
+	UPROPERTY(Config, EditAnywhere, Category = "Camera", meta = (ClampMin = "30", ClampMax = "720"))
+	float CameraTurnSpeed = 200.f;
+
+	// Folder (relative to the project) that is scanned for */mod.json at startup
+	UPROPERTY(Config, EditAnywhere, Category = "Mods") FString ModsFolder = TEXT("Mods");
 
 	UPROPERTY(Config, EditAnywhere, Category = "Debug") bool bDrawHitboxes = true;
 	UPROPERTY(Config, EditAnywhere, Category = "Debug") bool bShowFrameInfo = true;

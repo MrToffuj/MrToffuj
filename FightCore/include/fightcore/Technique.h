@@ -30,6 +30,7 @@ struct SkillSlot {
 class TechniqueLogic;
 
 struct TechniqueDef {
+    const char* id = "";
     const char* name = "";
     const char* coreRule = "";
     const char* weakness = "";
