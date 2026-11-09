@@ -8,7 +8,7 @@ namespace fc {
 struct BodyDef;
 struct TechniqueDef;
 
-enum class PactCategory : uint8_t { Body, Resource, Technique, Rule, Time };
+enum class PactCategory : uint8_t { Body, Resource, Technique, Rule, Time, Companion };
 enum class PactSize : uint8_t { Small = 1, Medium = 2, Large = 4 };
 enum class PactTier : uint8_t { None, TooCheap, Fair, High, Overpaid };
 
@@ -18,6 +18,7 @@ enum class PactTier : uint8_t { None, TooCheap, Fair, High, Overpaid };
 //  Technique: 0..2 Skill sperren, 3 Realm verbieten, 4 Apex verbieten
 //  Rule:      0 "nie blocken", 1 "nur Nahkampf" (alle Skills gesperrt)
 //  Time:      Pakt gilt nur 60 s, dafür stärker (detail ignoriert)
+//  Companion: 0 Begleiter-HP, 1 Begleiter-Slot sperren, 2 Begleiter dauerhaft verlieren
 struct PactChoice {
     bool active = false;
     PactCategory category = PactCategory::Body;
@@ -40,12 +41,16 @@ struct PactModifiers {
     int16_t cePoolPct = 100, ceRegenPct = 100, healPct = 100;
     uint8_t lockedSkills = 0; // Bitmaske
     bool noRealm = false, noApex = false, noBlock = false;
+    int16_t companionHpPct = 100;
+    uint8_t lockedCompanionSlots = 0;
+    bool companionLost = false;
     // Belohnungen / Backlash
     int16_t damagePct = 100, realmGainPct = 100, cooldownPct = 100;
     int32_t ceLeak = 0;           // pro Frame, 1/100 Essenz
     int16_t extraZeroSpark = 0;   // zusätzliche Nullfunke-Frames
     bool openRealm = false;       // Realm ohne Barriere
     bool apexNoStartup = false;
+    uint8_t bonusCompanion = 0;   // 0 keiner, 1 Paktgeist, 2 Wandler (adaptiv)
     int32_t durationFrames = -1;  // -1 = ganzes Match
 };
 

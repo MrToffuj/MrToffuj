@@ -30,6 +30,14 @@ int sensitivity(const PactChoice& c, const BodyDef& b, const TechniqueDef* t, co
             return (p.skillUsage[0] + p.skillUsage[1] + p.skillUsage[2]) / 30;
         case PactCategory::Time:
             return 3;
+        case PactCategory::Companion: {
+            const bool assist = b.has(PassiveAssist);
+            const bool techComps = t && !t->companions.empty();
+            if (!assist && !techComps) return 0; // hat keine Begleiter -> wertlos
+            if (c.detail == 0) return assist ? 4 : 3;
+            if (c.detail == 1) return assist ? 8 : 6;
+            return assist ? 10 : 5;
+        }
     }
     return 0;
 }
@@ -75,6 +83,11 @@ PactResult evaluatePact(const PactChoice& c, const BodyDef& body, const Techniqu
         case PactCategory::Time:
             m.durationFrames = 3600;
             break;
+        case PactCategory::Companion:
+            if (c.detail == 0) m.companionHpPct = pct;
+            else if (c.detail == 1) m.lockedCompanionSlots = 1;
+            else m.companionLost = true;
+            break;
     }
 
     // 2) Versteckter Wert
@@ -97,9 +110,19 @@ PactResult evaluatePact(const PactChoice& c, const BodyDef& body, const Techniqu
             break;
         case PactTier::Overpaid:
             m.damagePct = static_cast<int16_t>(m.damagePct + 5);
+            if (c.category == PactCategory::Companion) m.bonusCompanion = 2; // Wandler (adaptiv)
             [[fallthrough]];
         case PactTier::High:
-            if (tech) m.openRealm = true; else m.extraZeroSpark = 1;
+            if (c.category == PactCategory::Companion) {
+                if (!m.bonusCompanion) m.bonusCompanion = 1; // temporärer Zusatz-Begleiter
+            } else if (tech) {
+                m.openRealm = true;
+            } else {
+                m.extraZeroSpark = 1;
+            }
+            // Bodies ohne Begleiter bekommen einen nur über zeitlich begrenzte Pakte
+            if (c.category == PactCategory::Time && !body.has(PassiveAssist) && !(tech && !tech->companions.empty()))
+                m.bonusCompanion = 1;
             [[fallthrough]];
         case PactTier::Fair:
             m.damagePct = static_cast<int16_t>(m.damagePct + bonus);

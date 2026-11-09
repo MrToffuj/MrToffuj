@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "fightcore/Companion.h"
 #include "fightcore/Events.h"
 #include "fightcore/Types.h"
 
@@ -38,6 +39,7 @@ struct TechniqueDef {
     int16_t apexMove = -1;
     ApexType apexType = ApexType::Burst;
     RealmClass realmClass = RealmClass::Damage;
+    std::vector<const CompanionDef*> companions; // Begleiter-Pool der Technik (z. B. Schattenpool)
     const TechniqueLogic* logic = nullptr;
 };
 
@@ -56,12 +58,20 @@ struct TechContext {
     int spawnProjectile(Vec3 pos, Vec3 vel, Fx radius, int16_t life, int16_t moveIndex, int16_t armDelay = 0) const;
     void emit(ImpactKind kind, Vec3 pos, Vec3 dir, Fx force, ImpactClass strength, int16_t tag = 0) const;
     void damage(int target, int16_t amount) const; // direkter Schaden (DoT, Selbstschaden)
+    // Begleiter der Technik beschwören (Index in TechniqueDef::companions). Liefert Slot oder -1.
+    int summon(int16_t techCompanion) const;
+    // Slot des Technik-Begleiters, falls auf dem Feld, sonst -1
+    int companionSlot(int16_t techCompanion) const;
+    bool companionLost(int16_t techCompanion) const;
+    bool command(int slot, AssistRole role) const;
 };
 
 class TechniqueLogic {
 public:
     virtual ~TechniqueLogic() = default;
     virtual void onMoveEvent(const TechContext&, int16_t /*moveIndex*/) const {}
+    // Darf Skill-Slot gerade benutzt werden? (z. B. Begleiter gefallen)
+    virtual bool canUseSkill(const TechContext&, int /*slot*/) const { return true; }
     virtual void onTick(const TechContext&) const {}
     virtual void onRealmOpen(const TechContext&) const {}
     virtual void onRealmTick(const TechContext&) const {}

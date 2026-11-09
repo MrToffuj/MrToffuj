@@ -16,7 +16,8 @@ namespace fc {
 //  Guard + Dash            -> Dodge
 //  Mod + Guard (halten)    -> Rückfluss (Heilung, steht still)
 //  Mod + Dash              -> Verstärkung an/aus
-enum Button : uint8_t {
+//  Assist (R3)             -> Begleiter rufen: neutral Angriff, vor Druck, hoch Anti-Air, runter Schutz
+enum Button : uint16_t {
     BtnLight = 1 << 0,
     BtnHeavy = 1 << 1,
     BtnGrab  = 1 << 2,
@@ -25,13 +26,14 @@ enum Button : uint8_t {
     BtnDash  = 1 << 5,
     BtnMod   = 1 << 6,
     BtnUlt   = 1 << 7,
+    BtnAssist = 1 << 8,
 };
 
 // Richtung im Numpad-Format relativ zum Gegner: 6 vor, 4 zurück, 8/2 Sidestep, 5 neutral.
 struct FrameInput {
     uint8_t dir = 5;
-    uint8_t buttons = 0;
-    uint8_t consumed = 0;
+    uint16_t buttons = 0;
+    uint16_t consumed = 0;
 };
 
 class InputBuffer {
@@ -45,20 +47,20 @@ public:
     }
     const FrameInput& ago(int n) const { return hist_[(head_ + kSize - n) % kSize]; }
     const FrameInput& current() const { return ago(0); }
-    bool held(uint8_t btn) const { return (current().buttons & btn) != 0; }
+    bool held(uint16_t btn) const { return (current().buttons & btn) != 0; }
 
     // Alter (in Frames) des jüngsten unverbrauchten Drucks von btn, oder -1.
-    int pressAge(uint8_t btn, int window) const {
+    int pressAge(uint16_t btn, int window) const {
         for (int i = 0; i < window && i < kSize - 1; ++i) {
             const FrameInput& now = ago(i);
             if ((now.buttons & btn) && !(ago(i + 1).buttons & btn) && !(now.consumed & btn)) return i;
         }
         return -1;
     }
-    bool pressedWithin(uint8_t btn, int window) const { return pressAge(btn, window) >= 0; }
-    void consume(uint8_t btn, int window) {
+    bool pressedWithin(uint16_t btn, int window) const { return pressAge(btn, window) >= 0; }
+    void consume(uint16_t btn, int window) {
         int i = pressAge(btn, window);
-        if (i >= 0) hist_[(head_ + kSize - i) % kSize].consumed |= btn;
+        if (i >= 0) hist_[(head_ + kSize - i) % kSize].consumed = static_cast<uint16_t>(hist_[(head_ + kSize - i) % kSize].consumed | btn);
     }
 
     uint64_t hash(uint64_t h) const;

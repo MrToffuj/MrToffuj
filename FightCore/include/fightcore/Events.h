@@ -15,6 +15,7 @@ enum class ImpactKind : uint8_t {
     ProjectileBurst, TechniqueFx, Burst,
     RealmOpen, RealmClash, RealmEnd,
     Ignite, Burnout,
+    CompanionSummon, CompanionCall, CompanionDown, CompanionRevive, CompanionGone,
 };
 
 struct ImpactEvent {

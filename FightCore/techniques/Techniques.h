@@ -12,3 +12,11 @@ const TechniqueDef& glutkern();
 enum GlutkernMove : int16_t { kEmberMoths, kMagmaPillar, kHeatMantle, kStarfall, kGlutkernMoveCount };
 
 } // namespace fc::techniques
+
+namespace fc::techniques {
+
+// Schattenmenagerie: Beschwörer-Technik auf Basis des Begleiter-Systems.
+const TechniqueDef& schattenmenagerie();
+enum SchattenMove : int16_t { kCallHounds, kCallWing, kCallMaw, kFloodColossus, kSchattenMoveCount };
+
+} // namespace fc::techniques

@@ -1,5 +1,6 @@
 #pragma once
 #include "fightcore/Body.h"
+#include "fightcore/Companion.h"
 #include "fightcore/Events.h"
 #include "fightcore/Pact.h"
 #include "fightcore/State.h"
@@ -14,6 +15,7 @@ struct Loadout {
     const TechniqueDef* technique = nullptr;
     PactChoice pact;
     PlaystyleProfile profile;
+    const CompanionDef* assist = nullptr; // Summoner-Assist (nullptr -> Klingenwolf)
 };
 
 struct MatchSetup {
@@ -23,6 +25,12 @@ struct MatchSetup {
     // Von finalize() berechnet:
     BodyStats stats[2];
     PactResult pact[2];
+    // Begleiter-Roster: [Summoner-Assist][Technik-Begleiter...][Pakt-Begleiter]
+    const CompanionDef* roster[2][kRosterMax] = {};
+    int8_t rosterCount[2] = {0, 0};
+    int8_t assistRoster[2] = {-1, -1};
+    int8_t techRosterStart[2] = {-1, -1};
+    int8_t pactRoster[2] = {-1, -1};
     void finalize();
 };
 
@@ -41,6 +49,9 @@ const MoveDef& baseMove(int16_t id);
 const MoveDef& moveOf(const MatchSetup& s, int fighter, int16_t moveId);
 
 MatchState createMatch(const MatchSetup& setup);
+
+int bondLevel(const FighterState& f); // 1..3
+const CompanionDef& companionDef(const MatchSetup& s, int owner, const CompanionState& c);
 void step(MatchState& m, const MatchSetup& setup, const FrameInput inputs[2], EventSink* events = nullptr);
 
 } // namespace fc

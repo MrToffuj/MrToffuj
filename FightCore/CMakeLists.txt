@@ -9,8 +9,11 @@ add_library(fightcore
     src/Simulation.cpp
     src/Body.cpp
     src/Pact.cpp
+    src/Companion.cpp
+    src/Companions.cpp
     techniques/Nullraum.cpp
     techniques/Glutkern.cpp
+    techniques/Schattenmenagerie.cpp
 )
 target_include_directories(fightcore PUBLIC include techniques)
 if(MSVC)

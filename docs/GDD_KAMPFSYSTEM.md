@@ -44,6 +44,7 @@ dieselben Systeme. Der Spielstil entsteht nur aus der Kombi.
 | Guard + Grab | **Essenz-Burst** – Notfall-Pushback, auch aus Hitstun |
 | Mod + Guard (halten) | Rückfluss |
 | Mod + Dash | Verstärkung an/aus |
+| Assist (R3) + Richtung | Begleiter rufen (siehe 9) |
 
 Modifier zählen **im Frame des Drückens** (wichtig für den Input-Buffer).
 
@@ -76,7 +77,7 @@ Jeder Body hat genau **10 Punkte** auf HP / Speed / Essenz / Range.
 | Caster | 1 | 2 | 4 | 3 | Regen ×1,5, Cooldowns −25 % |
 | Brawler | 3 | 3 | 2 | 2 | Nullfunke-Fenster ±3 |
 | Technician | 2 | 3 | 3 | 2 | Parry-Fenster 8 statt 5, Schutzkreis halb so teuer |
-| Summoner | 2 | 2 | 3 | 3 | Assist-Slot (⏳ noch nicht implementiert) |
+| Summoner | 2 | 2 | 3 | 3 | Assist-Slot: 1 permanenter Begleiter |
 
 **Nullgeboren (Sonder-Build):** Speedster ohne Technik und ohne Essenz. Dafür +20 % Speed,
 +15 % Schaden, immun gegen Sure-Hit, begrenzter Pakt-Wert.
@@ -120,7 +121,7 @@ Cast-Zeit (60 F) und Dauer (600 F) für alle gleich, nur der Effekt unterscheide
 |---|---|---|---|---|---|---|
 | **Nullraum** | Distanzfeld: Auto-Block gegen Projektile & Lights, kostet Essenz | Abstoßung / Anziehung / Faltschritt | Singularität (Burst) | Ereignishorizont (Lock) | Kein Essenz = kein Feld, Grabs gehen durch | ✅ |
 | **Glutkern** | Hitze-Stacks: Gegner brennt | Glutfalter / Magmasäule (Zone) / Hitzemantel | Sternfall (Burst) | Schmelzkammer (Damage) | Setup, langes Startup | ✅ |
-| Schattenmenagerie | Schattenpool mit Bestien-Slots | Schattenhunde / Nachtschwinge (Anti-Air) / Schlundkröte (Grab-Pull) | Flutkoloss (Zone) | Schattengarten (BuffField) | Gefallene Bestien weg für die Runde | ⏳ |
+| **Schattenmenagerie** | Schattenpool: bis zu 2 Bestien als Begleiter | Schattenhunde / Nachtschwinge (Anti-Air) / Schlundkröte (Grab-Pull) | Flutkoloss (Zone) | Schattengarten (BuffField) | Gefallene Bestien weg für die Runde | ✅ |
 | Schnittkunst | Schnitt-Schaden skaliert mit HP-Verlust des Gegners | Fernschnitt / Nahschnitt / Schnittnetz | Flammenpfeil (Burst) | Schnittaltar (Damage) | Blockbar, wenig Defense | ⏳ |
 | Echo | Echo-Marke: geparrter Skill 20 s gespeichert | Geisterhieb / Geisterschild / Echo-Tausch | Geist entfesselt (Transform) | Spiegelsaal (BuffField) | Ohne Echo dünnes Kit | ⏳ |
 | Seelenformung | Seelenberührung baut Debuff auf | Seelenhand / Leibverformung / Seelenpanzer | Seelenspaltung (Transform) | Vollkommene Form (Debuff) | Braucht Kontakt | ⏳ |
@@ -140,6 +141,7 @@ Verstecktes Layer: Spieler wählt **Kategorie + Größe**, nicht die Belohnung.
 | Technik | Skill 1/2/3 sperren, Realm verbieten, Apex verbieten |
 | Regel | „nie blocken“, „nur Nahkampf“ |
 | Zeit | gilt nur 60 s, Wert ×1,5 |
+| Begleiter | Begleiter-HP, Slot sperren, Begleiter dauerhaft verlieren |
 
 **Versteckter Wert** = Größe (1/2/4) × Empfindlichkeit (0–10, abhängig von Body + Playstyle-Profil).
 Ungenutzte Skills sind fast wertlos, Caster zahlt für Regen viel, Heavy fast nichts.
@@ -170,10 +172,79 @@ Playstyle-Profil wird vor dem Match zwischen Clients ausgetauscht → determinis
 
 **Gegen Power-Creep:** Mehr Power kostet immer Startup, Setup, Ressourcen oder HP.
 
-## 9. Offene Punkte
+## 9. Begleiter-System ✅
 
-- [ ] Summoner-Assist (Entity-System für Begleiter, auch für Schattenmenagerie nötig)
-- [ ] Restliche 8 Techniken implementieren
+Begleiter kämpfen neben dem Spieler, sind aber **kein zweiter Char**, sondern ein Werkzeug:
+ein Spieler, zwei Ziele, **ein Essenz-Pool**. Code: `include/fightcore/Companion.h`, `src/Companion.cpp`.
+
+### Wer bekommt Begleiter
+
+| Quelle | Begleiter | Regel |
+|---|---|---|
+| Summoner-Body | 1 permanenter Begleiter (frei wählbar) | Fällt aus → kehrt nach 15 s zurück, Revive kostet 150 Essenz (wartet, bis genug da ist) |
+| Schattenmenagerie | bis zu 2 Bestien aus dem Schattenpool | Skill beschwört; 3. Bestie ersetzt die älteste; gefallene sind für die Runde weg (Skill gesperrt) |
+| Andere Bodies | keiner | nur über zeitlich begrenzten Pakt |
+
+Summoner + Schattenmenagerie geht: Assist + 2 Bestien (3 Slots).
+
+### Steuerung
+
+- **Assist-Button + Richtung:** neutral = Angriff, vorwärts = Druck, hoch = Anti-Air, runter = Schutz.
+- Der passende Begleiter wird automatisch gewählt (Rolle → bevorzugter Typ).
+- Begleiter handeln nur auf Befehl, sonst folgen sie dem Spieler. Kein Autopilot.
+- Pro Begleiter ein Cooldown nach jeder Aktion.
+- **Leash:** wird der Spieler getroffen, bricht jeder Begleiter seine Aktion ab.
+- Kein Rufen während Burnout, Hitstun, Lock oder Clash.
+
+### Ressourcen
+
+- Begleiter-HP: eigene, kleine Leiste. Gegner können Begleiter direkt treffen (Melee + Projektile).
+- **Upkeep:** jeder Begleiter auf dem Feld zieht Essenz pro Frame → weniger für Skills, Apex, Realm.
+- **Schadens-Cap:** Begleiter-Treffer machen 60 % eines vergleichbaren Skills (Engine-Regel).
+
+### Begleiter-Typen & Aktions-Bausteine
+
+| Typ | Aufgabe | Summoner-Beispiel | Schattenpool |
+|---|---|---|---|
+| Striker | Offense, Druck, Combo-Verlängerung | Klingenwolf | Schattenhunde |
+| Zoner | Projektile, Anti-Air, Raumkontrolle | Funkeneule | Nachtschwinge |
+| Support | Grabs, Pulls, Utility | Rankenkröte | Schlundkröte |
+| Guard | blockt für den Spieler (auch beim Rückfluss) | Steinwächter | – |
+
+Jede Aktion ist aus generischen Bausteinen gebaut: **Rush** (hinsprinten + Schlag), **Shoot** (Projektil),
+**Rise** (Anti-Air vor dem Spieler), **Pull** (Gegner zum Spieler ziehen, unblockbar), **Shield**
+(stellt sich davor, fängt Treffer von vorne ab, Grabs gehen durch).
+
+### Bond-Level (nur fürs laufende Match)
+
+| Stufe | ab | Effekt |
+|---|---|---|
+| 1 | 0 | – |
+| 2 | 3 erfolgreiche Assists | **Link-Attack:** Assist im Hit-Confirm → Begleiter taucht am Gegner auf, schlägt sofort zu, +25 % |
+| 3 | 6 erfolgreiche Assists | Begleiter wirkt im Realm mit: Damage-Tick 25 statt 20, Lock 120 statt 90 F, BuffField/Debuff +25 % statt +15 % |
+
+Fällt ein Begleiter, ist der Bond-Fortschritt weg.
+
+### Schwächen & Counterplay
+
+- Gegner kann den Begleiter ignorieren und den Spieler angreifen (Leash).
+- Begleiter sind **nicht realm-immun**: Sure-Hit-Schaden und Lock erfassen sie (auch wenn der Spieler im Schutzkreis steht).
+- Begleiter verlieren → weniger Druck, Utility und Bond.
+
+### Pakt-Anbindung
+
+Opfer-Feld **Begleiter**: HP, Slot sperren, Begleiter dauerhaft verlieren. Ohne Begleiter wertlos (Backlash).
+
+| Stufe | Hidden Reward |
+|---|---|
+| Hoch | **Paktgeist**: temporärer Zusatz-Begleiter (30 s, kein Upkeep) |
+| Überzahlt | **Wandler**: mächtige Sonderform mit **Adaption** – dieselbe Angriffs-Kategorie macht beim 2. Treffer nur noch halben Schaden |
+
+Bodies ohne Begleiter: ein **Zeit-Pakt** mit hohem Wert gibt einen Paktgeist für die Dauer des Pakts.
+
+## 10. Offene Punkte
+
+- [ ] Restliche 7 Techniken implementieren (Echo braucht noch einen Guard-Begleiter)
 - [ ] Notfall-Pakt mitten im Match, Technik-spezifische Hidden Rewards, Vow-Journal
 - [ ] Synergie-Matrix Bodies × Techniken
 - [ ] Realm-Clash-Regeln pro Body

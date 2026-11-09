@@ -19,6 +19,25 @@ enum class FState : uint8_t {
     Clash,  // Realm-Clash (Input-Duell)
 };
 
+struct CompanionState {
+    int8_t roster = -1;      // Index in MatchSetup::roster[owner], -1 = Slot leer
+    int8_t action = -1;      // AssistRole oder -1 (folgt dem Spieler)
+    bool link = false;       // Link-Attack (Bond-Stufe 2)
+    bool hasHit = false;
+    int16_t hp = 0;
+    int16_t actionFrame = 0;
+    int16_t cooldown = 0;
+    int16_t down = 0;        // > 0: ausgefallen, Revive-Countdown
+    int16_t lock = 0;
+    int32_t expires = -1;    // temporäre Begleiter: Frames bis sie verschwinden
+    int32_t since = 0;       // Beschwörungs-Frame ("ältester wird ersetzt")
+    uint8_t adapted = 0;     // Adaption: Bitmaske der MoveCategories
+    Vec3 pos{};
+    Vec3 facing{Fx{}, Fx{}, Fx::fromInt(1)};
+
+    bool onField() const { return roster >= 0 && down == 0; }
+};
+
 struct FighterState {
     Vec3 pos{}, vel{};
     Vec3 facing{Fx{}, Fx{}, Fx::fromInt(1)};
@@ -47,13 +66,17 @@ struct FighterState {
     bool reinforce = false;
     bool apexUsed = false;
     InputBuffer input;
+    std::array<CompanionState, 3> comp{};
+    uint8_t lostMask = 0;        // Roster-Einträge, die für die Runde weg sind
+    int16_t bond = 0;            // erfolgreiche Assists (Bond-Leiste)
     std::array<int32_t, 8> tech{}; // Technik-Zustand
 };
 
 struct Projectile {
     bool alive = false;
     uint8_t owner = 0;
-    int16_t moveIndex = -1; // Technik-Move-Index (HitProps)
+    int8_t source = 0;      // 0 = Technik, sonst Roster-Index + 1 (Begleiter)
+    int16_t moveIndex = -1; // Move-Index in Technik bzw. Begleiter (HitProps)
     int16_t life = 0;
     int16_t armDelay = 0;   // Frames bis aktiv (z. B. Säule aus dem Boden)
     Vec3 pos{}, vel{};

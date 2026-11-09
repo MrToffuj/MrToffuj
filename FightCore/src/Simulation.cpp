@@ -1,5 +1,7 @@
 #include "fightcore/Simulation.h"
 
+#include "Internal.h"
+
 namespace fc {
 
 // ============================================================ Basis-Moves (für alle Builds gleich)
@@ -80,6 +82,7 @@ void MatchSetup::finalize() {
         stats[i] = deriveStats(*loadout[i].body);
         pact[i] = evaluatePact(loadout[i].pact, *loadout[i].body, loadout[i].technique, loadout[i].profile);
     }
+    detail::buildRoster(*this);
 }
 
 // ============================================================ TechContext
@@ -98,7 +101,7 @@ int TechContext::spawnProjectile(Vec3 pos, Vec3 vel, Fx radius, int16_t life, in
     for (int i = 0; i < static_cast<int>(m.proj.size()); ++i) {
         Projectile& p = m.proj[i];
         if (p.alive) continue;
-        p = Projectile{true, static_cast<uint8_t>(self), moveIndex, life, armDelay, pos, vel, radius};
+        p = Projectile{true, static_cast<uint8_t>(self), 0, moveIndex, life, armDelay, pos, vel, radius};
         return i;
     }
     return -1;
@@ -113,11 +116,9 @@ void TechContext::damage(int target, int16_t amount) const {
 }
 
 // ============================================================ Simulation
-namespace {
+namespace detail {
 
-using Ev = EventSink*;
-
-void emit(Ev ev, const MatchState& m, ImpactKind k, int src, ImpactClass s, Vec3 pos, Vec3 dir, Fx force, int16_t tag = 0) {
+void emit(Ev ev, const MatchState& m, ImpactKind k, int src, ImpactClass s, Vec3 pos, Vec3 dir, Fx force, int16_t tag) {
     if (ev) ev->push_back({m.frame, k, static_cast<uint8_t>(src), s, tag, pos, dir, force});
 }
 
@@ -181,17 +182,17 @@ struct Cmd {
     int32_t ceCost = 0;
     bool apex = false, realm = false, ward = false;
     int age = 0;
-    uint8_t button = 0;
+    uint16_t button = 0;
 };
 
 Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
     FighterState& f = m.f[i];
     const TechniqueDef* T = s.loadout[i].technique;
     const PactModifiers& pm = mods(m, s, i);
-    auto age = [&](uint8_t b) { return f.input.pressAge(b, kBufferWindow); };
+    auto age = [&](uint16_t b) { return f.input.pressAge(b, kBufferWindow); };
     // Modifier/Guard zählen im Frame des Tastendrucks, nicht beim (gebufferten) Auslesen.
-    auto heldAt = [&](int a, uint8_t b) { return (f.input.ago(a).buttons & b) != 0; };
-    auto ok = [&](Cmd c, uint8_t btn, int a) { c.button = btn; c.age = a; f.input.consume(btn, kBufferWindow); return c; };
+    auto heldAt = [&](int a, uint16_t b) { return (f.input.ago(a).buttons & b) != 0; };
+    auto ok = [&](Cmd c, uint16_t btn, int a) { c.button = btn; c.age = a; f.input.consume(btn, kBufferWindow); return c; };
     int a;
 
     if ((a = age(BtnUlt)) >= 0) {
@@ -223,11 +224,12 @@ Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
         return {};
     }
 
-    const uint8_t btns[3] = {BtnLight, BtnHeavy, BtnGrab};
+    const uint16_t btns[3] = {BtnLight, BtnHeavy, BtnGrab};
     for (int slot = 0; slot < 3; ++slot) {
         if ((a = age(btns[slot])) < 0 || !heldAt(a, BtnMod)) continue;
         // Mod gehalten -> Skill oder nichts (nie versehentliche Normals)
         if (!T || f.burnout > 0 || f.cooldown[slot] > 0 || (pm.lockedSkills & (1 << slot))) return {};
+        if (T->logic && !T->logic->canUseSkill(TechContext{m, s, i, nullptr}, slot)) return {};
         if (!(allowed & catBit(MoveCategory::Skill))) return {};
         int32_t cost = skillCost(m, s, i, slot);
         if (f.ce < cost) return {};
@@ -338,6 +340,7 @@ void tickResources(MatchState& m, const MatchSetup& s, int i, Ev ev) {
     if (f.reinforce) regen -= 25;
     if (f.state == FState::Ward) regen -= st.wardDrain;
     if (f.state == FState::Heal) regen -= 150;
+    regen -= companionUpkeep(m, s, i);
     const bool wasPositive = f.ce > 0;
     f.ce += regen;
     if (f.ce > max) f.ce = max;
@@ -370,6 +373,11 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
             return;
         }
     }
+
+    // Begleiter rufen geht parallel zu fast allem (nicht aus Stun / Lock / Clash)
+    if (f.state != FState::Hitstun && f.state != FState::Blockstun && f.state != FState::Locked &&
+        f.state != FState::Clash && f.state != FState::Knockdown)
+        tryAssistCommand(m, s, i, ev);
 
     switch (f.state) {
         case FState::Idle:
@@ -571,14 +579,6 @@ bool isInvulnerable(const MatchState& m, const MatchSetup& s, int i) {
     return f.moveFrame >= mv.invulnFirst && f.moveFrame <= mv.invulnLast;
 }
 
-struct PendingHit {
-    bool valid = false;
-    const MoveDef* move = nullptr;
-    int16_t moveId = -1; // wie FighterState::moveId (Projektil: Index + 100)
-    bool projectile = false;
-    Vec3 point{}, dir{};
-};
-
 void addRealmMeter(FighterState& f, int amount) {
     int v = f.realmMeter + amount;
     f.realmMeter = static_cast<int16_t>(v > kRealmMeterMax ? kRealmMeterMax : v);
@@ -595,6 +595,20 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     const TechniqueLogic* al = logicOf(s, atk);
     const TechniqueLogic* dl = logicOf(s, di);
     const int16_t techIdx = h.moveId >= kTechMoveOffset ? static_cast<int16_t>(h.moveId - kTechMoveOffset) : -1;
+    const bool fromCompanion = h.companion >= 0;
+    const Vec3 src = fromCompanion ? h.source : a.pos;
+
+    // Wächter-Begleiter fängt Treffer von vorne ab (Grabs gehen durch)
+    if (!p.unblockable) {
+        int guard = shieldingCompanion(m, s, di, src);
+        if (guard >= 0) {
+            a.hitstop = 4;
+            damageCompanion(m, s, di, guard, p.damage, mv.category, ev);
+            d.bond = static_cast<int16_t>(d.bond < kBondMax ? d.bond + 1 : kBondMax);
+            emit(ev, m, ImpactKind::Block, di, p.impact, h.point, h.dir, p.knockback, 2);
+            return;
+        }
+    }
 
     // Core Rules wie ein Auto-Block-Feld
     if (dl && dl->nullifiesIncoming(dctx, mv, h.projectile)) {
@@ -603,7 +617,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
         return;
     }
 
-    const bool facingAtk = dot(d.facing, a.pos - d.pos) > Fx{};
+    const bool facingAtk = dot(d.facing, src - d.pos) > Fx{};
     const bool guarding = d.state == FState::Guard || d.state == FState::Blockstun;
     const bool blocked = !p.unblockable && d.grounded && facingAtk && guarding;
     a.hitstop = d.hitstop = p.hitstop;
@@ -612,7 +626,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
         const bool parry = d.state == FState::Guard && m.frame - d.guardPressFrame <= s.stats[di].parryWindow &&
                            mv.category != MoveCategory::Apex;
         if (parry) {
-            if (!h.projectile) { a.state = FState::Hitstun; a.stun = 18; a.moveId = -1; a.vel = {}; }
+            if (!h.projectile && !fromCompanion) { a.state = FState::Hitstun; a.stun = 18; a.moveId = -1; a.vel = {}; }
             addRealmMeter(d, 100);
             emit(ev, m, ImpactKind::Parry, di, p.impact, h.point, h.dir, p.knockback);
             if (dl) dl->onParry(dctx, mv);
@@ -633,17 +647,21 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     dmg = dmg * mods(m, s, atk).damagePct / 100;
     if (al) dmg = dmg * al->damageDealtPct(actx, techIdx) / 100;
     if (dl) dmg = dmg * dl->damageTakenPct(dctx) / 100;
-    if (buffed(m, s, atk) || debuffed(m, s, di)) dmg = dmg * 115 / 100;
+    if (buffed(m, s, atk) || debuffed(m, s, di)) dmg = dmg * (bondLevel(a) >= 3 ? 125 : 115) / 100;
     const bool ceAttack = h.projectile || mv.category == MoveCategory::Skill || mv.category == MoveCategory::Apex;
     if (a.reinforce) dmg = dmg * 120 / 100;
     if (d.reinforce && ceAttack) dmg = dmg * 80 / 100;
     if (mv.category == MoveCategory::Grab && s.loadout[atk].body->has(PassiveStrongGrab)) dmg = dmg * 150 / 100;
-    if (!h.projectile && s.loadout[atk].body->has(PassiveFlankCrit) && dot(d.facing, h.dir) > Fx::ratio(-1, 2))
+    if (fromCompanion) {
+        dmg = dmg * kCompanionDamagePct / 100;
+        if (h.link) dmg = dmg * 125 / 100;
+    }
+    if (!h.projectile && !fromCompanion && s.loadout[atk].body->has(PassiveFlankCrit) && dot(d.facing, h.dir) > Fx::ratio(-1, 2))
         dmg = dmg * 130 / 100; // Treffer von Seite/Rücken
 
     // Nullfunke: Normal perfekt auf das Hitstop-Ende des vorherigen Treffers getimed
     bool zeroSpark = false;
-    if (!h.projectile && mv.category == MoveCategory::Normal) {
+    if (!h.projectile && !fromCompanion && mv.category == MoveCategory::Normal) {
         int window = s.stats[atk].zeroSparkWindow + mods(m, s, atk).extraZeroSpark;
         int diff = a.pressFrame - a.linkFrame;
         if (diff < 0) diff = -diff;
@@ -674,38 +692,66 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     d.vel = h.dir * p.knockback + Vec3{Fx{}, p.launch, Fx{}};
     if (p.launch > Fx{}) { d.grounded = false; d.launched = true; }
     ++d.comboTaken;
-    a.linkFrame = m.frame + a.hitstop + 1;
+    leash(m, s, di); // getroffener Spieler -> seine Begleiter brechen ab
+    if (fromCompanion) a.bond = static_cast<int16_t>(a.bond < kBondMax ? a.bond + 1 : kBondMax);
+    else a.linkFrame = m.frame + a.hitstop + 1;
     addRealmMeter(a, dmg / 2 * s.stats[atk].realmGainPct / 100 * mods(m, s, atk).realmGainPct / 100);
     addRealmMeter(d, dmg / 4);
     if (!zeroSpark) emit(ev, m, ImpactKind::Hit, atk, p.impact, h.point, h.dir, p.knockback + p.launch);
-    if (al) al->onHitLanded(actx, techIdx, h.projectile);
+    if (al && !fromCompanion) al->onHitLanded(actx, techIdx, h.projectile);
 }
 
-PendingHit checkMelee(const MatchState& m, const MatchSetup& s, int atk) {
-    const FighterState& a = m.f[atk];
-    if (a.state != FState::Attack || a.moveHasHit) return {};
-    const MoveDef& mv = moveOf(s, atk, a.moveId);
-    if (!mv.isActiveFrame(a.moveFrame) || isInvulnerable(m, s, 1 - atk)) return {};
-    if (mv.category == MoveCategory::Grab && (!m.f[1 - atk].grounded || m.f[1 - atk].state == FState::Hitstun)) return {};
-    MatchState& mm = const_cast<MatchState&>(m);
-    const TechContext actx{mm, s, atk, nullptr};
-    const TechContext dctx{mm, s, 1 - atk, nullptr};
-    const bool base = a.moveId < kTechMoveOffset;
+bool hitsFighter(const MatchState& m, int target, Vec3 c, Fx r) {
     // Hurtbox: einfache Kapsel aus 3 Kugeln (Beine, Torso, Kopf)
     static const HitboxDef hurt[3] = {
         {{Fx{}, Fx::ratio(5, 10), Fx{}}, Fx::ratio(45, 100)},
         {{Fx{}, Fx::ratio(12, 10), Fx{}}, Fx::ratio(45, 100)},
         {{Fx{}, Fx::ratio(17, 10), Fx{}}, Fx::ratio(30, 100)},
     };
+    const FighterState& f = m.f[target];
+    for (const HitboxDef& hu : hurt)
+        if (overlap(c, r, f.pos + Vec3{Fx{}, hu.offset.y, Fx{}}, hu.radius)) return true;
+    return false;
+}
+
+void moveToward(Vec3& p, Vec3 target, Fx speed) {
+    Vec3 d = target - p;
+    Fx len = length(d);
+    if (len <= speed || len.raw == 0) { p = target; return; }
+    p += Vec3{d.x / len, d.y / len, d.z / len} * speed;
+}
+
+struct MeleeCheck {
+    PendingHit hit;
+    bool active = false; // aktiver Hitbox-Frame
+    Vec3 center{};
+    Fx radius{};
+};
+
+MeleeCheck checkMelee(const MatchState& m, const MatchSetup& s, int atk) {
+    const FighterState& a = m.f[atk];
+    if (a.state != FState::Attack || a.moveHasHit) return {};
+    const MoveDef& mv = moveOf(s, atk, a.moveId);
+    if (!mv.isActiveFrame(a.moveFrame) || mv.hitboxes.empty()) return {};
+    MatchState& mm = const_cast<MatchState&>(m);
+    const TechContext actx{mm, s, atk, nullptr};
+    const bool base = a.moveId < kTechMoveOffset;
+    const bool grabOk = mv.category != MoveCategory::Grab ||
+                        (m.f[1 - atk].grounded && m.f[1 - atk].state != FState::Hitstun);
+    MeleeCheck out;
+    out.active = true;
     for (const HitboxDef& hb : mv.hitboxes) {
         Vec3 off = hb.offset;
         if (base) off.z = off.z * s.stats[atk].reach; // Range-Stat des Bodys
         Vec3 c = actx.localToWorld(off);
-        for (const HitboxDef& hu : hurt)
-            if (overlap(c, hb.radius, dctx.localToWorld(hu.offset), hu.radius))
-                return {true, &mv, a.moveId, false, c, a.facing};
+        out.center = c;
+        out.radius = hb.radius;
+        if (grabOk && !isInvulnerable(m, s, 1 - atk) && hitsFighter(m, 1 - atk, c, hb.radius)) {
+            out.hit = {true, &mv, a.moveId, false, c, a.facing};
+            return out;
+        }
     }
-    return {};
+    return out;
 }
 
 void updateProjectiles(MatchState& m, const MatchSetup& s, Ev ev) {
@@ -715,17 +761,15 @@ void updateProjectiles(MatchState& m, const MatchSetup& s, Ev ev) {
         if (p.armDelay > 0) { --p.armDelay; continue; }
         p.pos += p.vel;
         const int target = 1 - p.owner;
-        const TechContext dctx{m, s, target, nullptr};
-        bool hit = false;
-        if (!isInvulnerable(m, s, target)) {
-            for (Fx y : {Fx::ratio(5, 10), Fx::ratio(12, 10), Fx::ratio(17, 10)})
-                if (overlap(p.pos, p.radius, dctx.localToWorld({Fx{}, y, Fx{}}), Fx::ratio(45, 100))) { hit = true; break; }
-        }
-        if (hit) {
-            const MoveDef& mv = s.loadout[p.owner].technique->moves[p.moveIndex];
-            PendingHit h{true, &mv, static_cast<int16_t>(p.moveIndex + kTechMoveOffset), true, p.pos,
-                         normalizeXZ(p.vel, m.f[p.owner].facing)};
+        const bool fromCompanion = p.source > 0;
+        const MoveDef& mv = fromCompanion ? companionMove(s, p.owner, p.source - 1, p.moveIndex)
+                                          : s.loadout[p.owner].technique->moves[p.moveIndex];
+        if (projectileHitsCompanion(m, s, p, mv, ev)) { p.alive = false; continue; }
+        if (!isInvulnerable(m, s, target) && hitsFighter(m, target, p.pos, p.radius)) {
+            PendingHit h{true, &mv, fromCompanion ? int16_t(-1) : static_cast<int16_t>(p.moveIndex + kTechMoveOffset),
+                         true, p.pos, normalizeXZ(p.vel, m.f[p.owner].facing)};
             if (p.vel == Vec3{}) h.dir = normalizeXZ(m.f[target].pos - p.pos, m.f[p.owner].facing);
+            if (fromCompanion) { h.companion = static_cast<int8_t>(p.source - 1); h.source = p.pos - h.dir; }
             applyHit(m, s, p.owner, h, ev);
             p.alive = false;
             continue;
@@ -757,11 +801,14 @@ void tickRealm(MatchState& m, const MatchSetup& s, Ev ev) {
     const int o = r.owner, t = 1 - o;
     const int elapsed = kRealmFrames - r.timer;
     FighterState& tf = m.f[t];
+    const bool bond3 = bondLevel(m.f[o]) >= 3; // Begleiter wirkt im Realm mit
+    // Begleiter sind NICHT realm-immun
+    realmHitsCompanions(m, s, t, realmClass(m, s), bondLevel(m.f[o]), ev);
     if (realmAffects(m, s, t)) {
         switch (realmClass(m, s)) {
             case RealmClass::Damage:
                 if (elapsed % 30 == 0) {
-                    tf.health = static_cast<int16_t>(tf.health - 20);
+                    tf.health = static_cast<int16_t>(tf.health - (bond3 ? 25 : 20));
                     emit(ev, m, ImpactKind::SureHit, o, ImpactClass::Medium, tf.pos, {}, Fx{}, 0);
                 }
                 break;
@@ -769,7 +816,7 @@ void tickRealm(MatchState& m, const MatchSetup& s, Ev ev) {
                 if (elapsed % 200 == 0 && tf.state != FState::Attack) {
                     tf.health = static_cast<int16_t>(tf.health - 5);
                     tf.state = FState::Locked;
-                    tf.lock = 90;
+                    tf.lock = static_cast<int16_t>(bond3 ? 120 : 90);
                     tf.vel = {};
                     emit(ev, m, ImpactKind::SureHit, o, ImpactClass::Heavy, tf.pos, {}, Fx{}, 1);
                 }
@@ -787,7 +834,11 @@ void tickRealm(MatchState& m, const MatchSetup& s, Ev ev) {
     }
 }
 
-} // namespace
+} // namespace detail
+
+using namespace detail;
+
+int bondLevel(const FighterState& f) { return 1 + (f.bond >= 3) + (f.bond >= 6); }
 
 MatchState createMatch(const MatchSetup& s) {
     MatchState m{};
@@ -801,6 +852,7 @@ MatchState createMatch(const MatchSetup& s) {
         f.facing = {Fx{}, Fx{}, Fx::fromInt(i == 0 ? 1 : -1)};
     }
     for (WallState& w : m.walls) w.hp = s.stage.wallHp;
+    initCompanions(m, s);
     return m;
 }
 
@@ -818,18 +870,24 @@ void step(MatchState& m, const MatchSetup& s, const FrameInput inputs[2], EventS
     for (int i = 0; i < 2; ++i) if (!frozen[i]) updateFighter(m, s, i, ev);
     for (int i = 0; i < 2; ++i) if (!frozen[i]) physics(m, s, i, ev);
     pushApart(m, s);
+    for (int i = 0; i < 2; ++i) tickCompanions(m, s, i, ev);
 
     for (int i = 0; i < 2; ++i)
         if (const TechniqueLogic* l = logicOf(s, i)) l->onTick(TechContext{m, s, i, ev});
 
     // Treffer beider Seiten erst sammeln, dann anwenden -> echte Trades
-    PendingHit hits[2];
+    MeleeCheck hits[2];
     for (int i = 0; i < 2; ++i) if (!frozen[i]) hits[i] = checkMelee(m, s, i);
     for (int i = 0; i < 2; ++i) {
-        if (!hits[i].valid) continue;
-        m.f[i].moveHasHit = true;
-        applyHit(m, s, i, hits[i], ev);
+        if (hits[i].hit.valid) {
+            m.f[i].moveHasHit = true;
+            applyHit(m, s, i, hits[i].hit, ev);
+        } else if (hits[i].active &&
+                   meleeHitsCompanion(m, s, i, moveOf(s, i, m.f[i].moveId), hits[i].center, hits[i].radius, ev)) {
+            m.f[i].moveHasHit = true; // Begleiter getroffen statt Spieler
+        }
     }
+    for (int i = 0; i < 2; ++i) companionAttacks(m, s, i, ev);
 
     updateProjectiles(m, s, ev);
     tickRealm(m, s, ev);
@@ -874,11 +932,17 @@ uint64_t hashState(const MatchState& m) {
         x.addInt(f.moveHasHit | (f.grounded << 1) | (f.launched << 2) | (f.reinforce << 3) | (f.apexUsed << 4));
         x.h = f.input.hash(x.h);
         for (int32_t t : f.tech) x.addInt(t);
+        x.addInt(f.lostMask); x.addInt(f.bond);
+        for (const CompanionState& c : f.comp) {
+            x.addInt(c.roster); x.addInt(c.action); x.addInt(c.link | (c.hasHit << 1)); x.addInt(c.hp);
+            x.addInt(c.actionFrame); x.addInt(c.cooldown); x.addInt(c.down); x.addInt(c.lock); x.addInt(c.expires);
+            x.addInt(c.since); x.addInt(c.adapted); x.add(c.pos); x.add(c.facing);
+        }
     }
     for (const Projectile& p : m.proj) {
         x.addInt(p.alive);
         if (!p.alive) continue;
-        x.addInt(p.owner); x.addInt(p.moveIndex); x.addInt(p.life); x.addInt(p.armDelay);
+        x.addInt(p.owner); x.addInt(p.source); x.addInt(p.moveIndex); x.addInt(p.life); x.addInt(p.armDelay);
         x.add(p.pos); x.add(p.vel); x.add(p.radius);
     }
     for (const WallState& w : m.walls) { x.addInt(w.hp); x.addInt(w.broken); }
