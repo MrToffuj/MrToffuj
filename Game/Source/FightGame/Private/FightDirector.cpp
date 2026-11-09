@@ -322,8 +322,19 @@ void AFightDirector::SpawnArena()
 	for (int32 i = 0; i < LocalPlayers; ++i)
 	{
 		ACameraActor* Cam = GetWorld()->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform::Identity, Params);
-		Cam->GetCameraComponent()->SetFieldOfView(Fov);
-		Cam->GetCameraComponent()->SetConstraintAspectRatio(false);
+		UCameraComponent* CamComp = Cam->GetCameraComponent();
+		CamComp->SetFieldOfView(Fov);
+		CamComp->SetConstraintAspectRatio(false);
+		// strip everything that makes a frame look like a 3D render
+		FPostProcessSettings& PP = CamComp->PostProcessSettings;
+		PP.bOverride_MotionBlurAmount = true;          PP.MotionBlurAmount = 0.f;
+		PP.bOverride_AutoExposureMinBrightness = true; PP.AutoExposureMinBrightness = 1.f;
+		PP.bOverride_AutoExposureMaxBrightness = true; PP.AutoExposureMaxBrightness = 1.f;
+		PP.bOverride_AmbientOcclusionIntensity = true; PP.AmbientOcclusionIntensity = 0.f;
+		PP.bOverride_VignetteIntensity = true;         PP.VignetteIntensity = 0.f;
+		PP.bOverride_SceneFringeIntensity = true;      PP.SceneFringeIntensity = 0.f;
+		PP.bOverride_BloomIntensity = true;            PP.BloomIntensity = 0.15f;
+		CamComp->PostProcessBlendWeight = 1.f;
 		Cameras.Add(Cam);
 	}
 }

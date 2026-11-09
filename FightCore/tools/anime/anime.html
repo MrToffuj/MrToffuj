@@ -1,0 +1,254 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}</style></head>
+<body><script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js"}}</script>
+<script type="module">
+// Anime look prototype: the same tricks we want in Unreal, small enough to read in one go.
+//  - characters: unlit toon shading, one light per character, hue shifted shadows, hair highlight band, rim
+//  - characters: inverted hull outlines with constant pixel width
+//  - environment: flat toon shading + ink lines from depth/normal edges in a post pass
+//  - impact frame: inverted, thresholded ink frame with speed lines
+import * as THREE from 'three';
+const q = new URLSearchParams(location.search);
+const MODE = q.get('mode') || 'anime';      // placeholder | anime | impact
+const W = 1600, H = 900;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H); renderer.setPixelRatio(1);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const OUTLINE = 1; // layer for hulls, kept out of the edge pass
+
+// ---------------------------------------------------------------- materials
+const charLight = new THREE.Vector3(-0.4, 0.75, 0.55).normalize(); // per character, not from the scene
+const sceneLight = new THREE.Vector3(0.5, 0.8, 0.3).normalize();
+
+function toon(base, shade, { light = charLight, hair = false, rim = 0.0, map = null, bands = 2 } = {}) {
+  if (MODE === 'placeholder') return new THREE.MeshStandardMaterial({ color: base, roughness: 0.6 });
+  return new THREE.ShaderMaterial({
+    uniforms: { base: { value: new THREE.Color(base) }, shade: { value: new THREE.Color(shade) }, lightDir: { value: light },
+                rim: { value: rim }, hair: { value: hair ? 1 : 0 }, map: { value: map }, useMap: { value: map ? 1 : 0 },
+                bands: { value: bands } },
+    vertexShader: `varying vec3 vN; varying vec3 vV; varying vec2 vUv;
+      void main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vN = normalize(mat3(modelMatrix) * normal);
+        vV = normalize(cameraPosition - wp.xyz); vUv = uv; gl_Position = projectionMatrix * viewMatrix * wp; }`,
+    fragmentShader: `uniform vec3 base, shade, lightDir; uniform float rim, hair, useMap, bands; uniform sampler2D map;
+      varying vec3 vN; varying vec3 vV; varying vec2 vUv;
+      void main(){
+        vec3 n = normalize(vN); vec3 l = normalize(lightDir);
+        float ndl = dot(n, l);
+        float lit = step(0.08, ndl);                          // one hard terminator, no gradients
+        vec3 c = mix(shade, base, lit);
+        if (bands > 2.5) c = mix(c, mix(shade, base, 0.55), step(-0.45, ndl) * (1.0 - lit)); // 3rd tone for scenery
+        if (hair > 0.5) {                                     // the anime hair shine: a hard band, not a highlight
+          vec3 h = normalize(l + vV);
+          float band = step(0.86, dot(n, h)) * step(dot(n, h), 0.93);
+          c = mix(c, min(base * 1.45 + 0.08, vec3(1.0)), band * lit);
+        }
+        float fr = 1.0 - max(dot(n, vV), 0.0);
+        c = mix(c, min(base * 1.3 + 0.1, vec3(1.0)), rim * step(0.7, fr) * lit);
+        if (useMap > 0.5) c *= texture2D(map, vUv).rgb;
+        gl_FragColor = vec4(c, 1.0);
+      }` });
+}
+
+function hullMaterial(px, color) {
+  return new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: { w: { value: px }, col: { value: new THREE.Color(color) } },
+    vertexShader: `uniform float w;
+      void main(){
+        vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vec3 nv = normalize(normalMatrix * normal);
+        vec2 dir = normalize((projectionMatrix * vec4(nv, 0.0)).xy);
+        clip.xy += dir * w * clip.w / vec2(${W / 2}.0, ${H / 2}.0);   // constant width in pixels
+        gl_Position = clip; }`,
+    fragmentShader: `uniform vec3 col; void main(){ gl_FragColor = vec4(col, 1.0); }` });
+}
+const inkHull = hullMaterial(2.6, 0x1a1020);
+
+function mesh(geo, mat, outline = true) {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(geo, mat);
+  g.add(m);
+  if (outline && MODE !== 'placeholder') {
+    const h = new THREE.Mesh(geo, inkHull);
+    h.layers.set(OUTLINE);
+    g.add(h);
+  }
+  return g;
+}
+
+// ---------------------------------------------------------------- a stand-in fighter built from primitives
+function fighter({ skin, skinShade, cloth, clothShade, hair, hairShade, accent }, pose) {
+  const root = new THREE.Group();
+  const S = toon(skin, skinShade, { rim: 0.6 });
+  const Face = toon(skin, skinShade, { rim: 0.4, light: new THREE.Vector3(0, 0.3, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), pose.faceLight || 0) });
+  const C = toon(cloth, clothShade, { rim: 0.5 });
+  const Hm = toon(hair, hairShade, { hair: true, rim: 0.3 });
+  const A = toon(accent, accent, {});
+  const black = new THREE.MeshBasicMaterial({ color: 0x15101a });
+  const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+  const hips = new THREE.Group(); hips.position.y = 0.95; root.add(hips);
+  const pelvis = mesh(new THREE.CapsuleGeometry(0.17, 0.12, 6, 16), C); pelvis.rotation.z = Math.PI / 2; hips.add(pelvis);
+  const chest = new THREE.Group(); chest.rotation.set(pose.lean || 0, pose.twist || 0, 0); hips.add(chest);
+  const torso = mesh(new THREE.CapsuleGeometry(0.2, 0.32, 8, 20), C); torso.position.y = 0.3; torso.scale.set(1.15, 1, 0.8); chest.add(torso);
+  for (let k = 0; k < 3; ++k) { const b = mesh(new THREE.SphereGeometry(0.022, 10, 8), A, false); b.position.set(0, 0.42 - k * 0.11, 0.165); chest.add(b); }
+  const collar = mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.11, 18, 1, true), C); collar.position.y = 0.6; chest.add(collar);
+  const head = new THREE.Group(); head.position.y = 0.78; head.rotation.set(pose.headTilt || 0, pose.headTurn || 0, 0); chest.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.16, 28, 22), Face));
+  // big anime eyes, flat colour, a white glint
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.036, 16, 12), black); eye.scale.set(0.75, 1.15, 0.35); eye.position.set(s * 0.06, 0.005, 0.145); head.add(eye);
+    const glint = new THREE.Mesh(new THREE.SphereGeometry(0.011, 8, 6), white); glint.position.set(s * 0.06 + 0.012, 0.022, 0.155); head.add(glint);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.009, 0.01), black); brow.position.set(s * 0.065, 0.07, 0.145); brow.rotation.z = -s * (pose.angry ? 0.35 : 0.1); head.add(brow);
+  }
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.006, 0.01), black); mouth.position.set(0, -0.075, 0.148); head.add(mouth);
+  // spiky hair: a cap plus cones swept back and to the sides
+  const cap = mesh(new THREE.SphereGeometry(0.172, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.38), Hm); cap.position.y = 0.012; cap.rotation.x = -0.35; head.add(cap);
+  const spikes = pose.spikes || [[0, 0.17, -0.02, -0.9, 0], [0.1, 0.13, -0.05, -0.6, -0.8], [-0.1, 0.13, -0.05, -0.6, 0.8],
+    [0.05, 0.15, -0.1, -1.4, -0.3], [-0.05, 0.15, -0.1, -1.4, 0.3], [0.13, 0.06, -0.06, -0.3, -1.4], [-0.13, 0.06, -0.06, -0.3, 1.4],
+    [0, 0.1, 0.12, 0.9, 0], [0.07, 0.09, 0.12, 0.8, -0.4], [-0.07, 0.09, 0.12, 0.8, 0.4]];
+  for (const [x, y, z, rx, rz] of spikes) {
+    const sp = mesh(new THREE.ConeGeometry(0.05, 0.2, 10), Hm); sp.position.set(x, y, z); sp.rotation.set(rx, 0, rz); head.add(sp);
+  }
+  // limbs hang from pivots so poses are just joint rotations
+  function limb(parent, at, len, r, mat, rot) {
+    const pivot = new THREE.Group(); pivot.position.set(...at); pivot.rotation.set(...rot); parent.add(pivot);
+    const seg = mesh(new THREE.CapsuleGeometry(r, len, 6, 14), mat); seg.position.y = -len / 2 - r * 0.3; pivot.add(seg);
+    const end = new THREE.Group(); end.position.y = -len - r * 0.6; pivot.add(end);
+    return end;
+  }
+  for (const s of [-1, 1]) {
+    const p = s < 0 ? pose.left : pose.right;
+    const elbow = limb(chest, [s * 0.27, 0.5, 0], 0.26, 0.065, C, p.shoulder);
+    const wrist = limb(elbow, [0, 0, 0], 0.24, 0.055, C, p.elbow);
+    const fist = mesh(new THREE.SphereGeometry(0.07, 14, 10), S); fist.position.y = -0.04; fist.scale.set(1, 1.1, 1.2); wrist.add(fist);
+    const lp = s < 0 ? pose.leftLeg : pose.rightLeg;
+    const knee = limb(hips, [s * 0.11, -0.05, 0], 0.38, 0.085, C, lp.hip);
+    const ankle = limb(knee, [0, 0, 0], 0.38, 0.075, C, lp.knee);
+    const shoe = mesh(new THREE.BoxGeometry(0.12, 0.08, 0.26), toon(0x2a2026, 0x161018)); shoe.position.set(0, -0.02, 0.06); ankle.add(shoe);
+  }
+  return root;
+}
+
+const stance = {
+  lean: 0.12, twist: -0.25, headTurn: 0.2, angry: true,
+  left: { shoulder: [-1.3, 0, 0.35], elbow: [-1.5, 0, 0] },
+  right: { shoulder: [-0.7, 0, -0.4], elbow: [-1.9, 0, 0] },
+  leftLeg: { hip: [-0.45, 0, 0.12], knee: [0.55, 0, 0] },
+  rightLeg: { hip: [0.35, 0, -0.1], knee: [0.35, 0, 0] },
+};
+const punch = {
+  lean: 0.28, twist: 0.45, headTurn: -0.35, angry: true,
+  left: { shoulder: [-0.9, 0, 0.6], elbow: [-1.7, 0, 0] },
+  right: { shoulder: [-1.62, 0, -0.08], elbow: [-0.05, 0, 0] },
+  leftLeg: { hip: [-0.85, 0, 0.1], knee: [0.9, 0, 0] },
+  rightLeg: { hip: [0.55, 0, -0.08], knee: [0.15, 0, 0] },
+};
+
+// ---------------------------------------------------------------- the colony
+function tileTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = 'rgba(60,45,40,0.55)'; g.lineWidth = 3;
+  for (let i = 0; i <= 4; ++i) { g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, 256); g.stroke(); g.beginPath(); g.moveTo(0, i * 64); g.lineTo(256, i * 64); g.stroke(); }
+  // painted unevenness instead of texture detail
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(16, 16); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const R = 30;
+const ground = new THREE.Mesh(new THREE.CircleGeometry(R + 1, 128), toon(0xc9b8a4, 0x8f7f86, { light: sceneLight, bands: 3 }));
+ground.geometry.attributes.uv.array.forEach((v, i, a) => a[i] = v); ground.rotation.x = -Math.PI / 2; scene.add(ground);
+const stone = toon(0xd6c9b6, 0x8a7d8f, { light: sceneLight, bands: 3 });
+const wood = toon(0xb0473a, 0x6d2f3f, { light: sceneLight, bands: 3 });
+for (const [x, z] of [[-6.5, 5], [6.8, 7], [-11, 14], [12, 15], [0, 19]]) {
+  const p = mesh(new THREE.BoxGeometry(1.6, 4.5, 1.6), stone, false); p.position.set(x, 2.25, z); scene.add(p);
+  const top = mesh(new THREE.BoxGeometry(2.1, 0.35, 2.1), wood, false); top.position.set(x, 4.6, z); scene.add(top);
+}
+// shrine gate in the back
+for (const x of [-3.2, 3.2]) { const post = mesh(new THREE.CylinderGeometry(0.28, 0.32, 6.5, 16), wood, false); post.position.set(x, 3.25, 24); scene.add(post); }
+const beam = mesh(new THREE.BoxGeometry(9, 0.5, 0.6), wood, false); beam.position.set(0, 6.4, 24); scene.add(beam);
+const beam2 = mesh(new THREE.BoxGeometry(7.4, 0.3, 0.45), wood, false); beam2.position.set(0, 5.5, 24); scene.add(beam2);
+// the barrier: a black curtain all around, with a faint rim where it meets the ground
+const barrier = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 400, 128, 1, true), new THREE.MeshBasicMaterial({ color: 0x050307, side: THREE.DoubleSide }));
+barrier.position.y = 200; scene.add(barrier);
+const rimMat = new THREE.ShaderMaterial({ transparent: true, side: THREE.DoubleSide, uniforms: {},
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+  fragmentShader: 'varying vec2 vUv; void main(){ float a = pow(1.0 - vUv.y, 3.0); gl_FragColor = vec4(0.55, 0.25, 0.85, a * 0.9); }' });
+const rimWall = new THREE.Mesh(new THREE.CylinderGeometry(R - 0.05, R - 0.05, 3, 128, 1, true), rimMat); rimWall.position.y = 1.5; scene.add(rimWall);
+// sky: only a dusk gradient straight up
+const sky = new THREE.Mesh(new THREE.SphereGeometry(500, 32, 16), new THREE.ShaderMaterial({ side: THREE.BackSide,
+  vertexShader: 'varying vec3 p; void main(){ p = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+  fragmentShader: 'varying vec3 p; void main(){ float h = normalize(p).y; gl_FragColor = vec4(mix(vec3(0.95,0.55,0.45), vec3(0.18,0.16,0.42), smoothstep(0.0,0.9,h)), 1.); }' }));
+scene.add(sky);
+if (MODE === 'placeholder') { scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x30302a, 1.2)); const d = new THREE.DirectionalLight(0xffffff, 2); d.position.set(5, 10, 3); scene.add(d); }
+
+// ---------------------------------------------------------------- the two fighters
+const p1 = fighter({ skin: 0xffe1cf, skinShade: 0xd99a9c, cloth: 0x252b4f, clothShade: 0x151633, hair: 0x9c3b2e, hairShade: 0x5c1f2c, accent: 0xf2c14e }, MODE === 'impact' ? punch : stance);
+p1.position.set(0, 0, 0); scene.add(p1);
+const p2 = fighter({ skin: 0xffe6d6, skinShade: 0xd3a0a8, cloth: 0xe8e4ea, clothShade: 0x9c90b8, hair: 0xd9e4f2, hairShade: 0x7f86b8, accent: 0x3a6ff2 },
+  MODE === 'impact' ? { ...stance, lean: -0.35, headTilt: -0.4, angry: false, left: { shoulder: [-0.4, 0, 1.1], elbow: [-0.6, 0, 0] }, right: { shoulder: [-0.3, 0, -1.2], elbow: [-0.5, 0, 0] } } : punch);
+p2.position.set(0.3, 0, 1.55); p2.rotation.y = Math.PI; scene.add(p2);
+
+// over the shoulder of P1, low and tight like an anime cut
+const camera = new THREE.PerspectiveCamera(MODE === 'impact' ? 32 : 36, W / H, 0.1, 2000);
+camera.position.set(-1.35, 1.55, -2.5);
+camera.lookAt(0.35, 1.25, 1.3);
+camera.layers.enable(OUTLINE);
+
+// ---------------------------------------------------------------- render: colour, then ink lines + grading in a post pass
+const color = new THREE.WebGLRenderTarget(W, H, { samples: 4 });
+const geo = new THREE.WebGLRenderTarget(W, H, { depthTexture: new THREE.DepthTexture(W, H) });
+renderer.setRenderTarget(color); renderer.render(scene, camera);
+camera.layers.disable(OUTLINE);
+const normalMat = new THREE.MeshNormalMaterial();
+scene.overrideMaterial = normalMat; sky.visible = false; barrier.visible = false; rimWall.visible = false;
+renderer.setRenderTarget(geo); renderer.render(scene, camera);
+scene.overrideMaterial = null;
+
+const post = new THREE.ShaderMaterial({
+  uniforms: { color: { value: color.texture }, normals: { value: geo.texture }, depth: { value: geo.depthTexture },
+              texel: { value: new THREE.Vector2(1 / W, 1 / H) }, mode: { value: MODE === 'impact' ? 2 : MODE === 'anime' ? 1 : 0 },
+              near: { value: camera.near }, far: { value: camera.far } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
+  fragmentShader: `uniform sampler2D color, normals, depth; uniform vec2 texel; uniform float mode, near, far; varying vec2 vUv;
+    float lin(vec2 uv){ float z = texture2D(depth, uv).x * 2.0 - 1.0; return 2.0 * near * far / (far + near - z * (far - near)); }
+    float hash(float n){ return fract(sin(n) * 43758.5453); }
+    void main(){
+      vec3 c = texture2D(color, vUv).rgb;
+      if (mode < 0.5) { gl_FragColor = vec4(c, 1.); return; }
+      // ink lines where depth or normals jump (scenery and creases); the hull handles character silhouettes
+      float d = lin(vUv), dl = 0.0, nl = 0.0;
+      vec3 n = texture2D(normals, vUv).rgb;
+      for (int i = 0; i < 4; ++i) {
+        vec2 o = vec2(i == 0 ? 1. : i == 1 ? -1. : 0., i == 2 ? 1. : i == 3 ? -1. : 0.) * texel * 1.5;
+        dl = max(dl, abs(lin(vUv + o) - d) / d);
+        nl = max(nl, length(texture2D(normals, vUv + o).rgb - n));
+      }
+      float ink = max(step(0.06, dl), step(0.45, nl)) * step(d, 120.0);
+      c = mix(c, vec3(0.1, 0.06, 0.12), ink * 0.9);
+      // a little warmth and grain, like a finished frame
+      c = pow(c, vec3(0.95)) * vec3(1.03, 1.0, 0.98);
+      c += (hash(vUv.x * 913.0 + vUv.y * 4711.0) - 0.5) * 0.025;
+      if (mode > 1.5) {
+        // impact frame: invert, crush to ink, then speed lines rushing to the hit
+        float lum = dot(c, vec3(0.3, 0.59, 0.11));
+        float v = 1.0 - step(0.42, lum);
+        vec3 inv = mix(vec3(0.05, 0.02, 0.04), vec3(1.0, 0.97, 0.94), v);
+        inv = mix(inv, vec3(0.9, 0.08, 0.1), step(0.75, lum) * 0.85);            // the brightest parts go red
+        inv = mix(inv, vec3(1.0), ink);                                        // ink lines turn white
+        vec2 hit = vec2(0.55, 0.52), dir = vUv - hit;
+        float ang = atan(dir.y, dir.x), r = length(dir * vec2(1.78, 1.0));
+        float streak = step(0.82, hash(floor(ang * 70.0))) * step(0.18 + hash(floor(ang * 70.0) + 3.0) * 0.25, r);
+        inv = mix(inv, vec3(0.0), streak);
+        c = inv;
+      }
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+    }` });
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post);
+const postScene = new THREE.Scene(); postScene.add(quad);
+const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+renderer.setRenderTarget(null); renderer.render(postScene, postCam);
+document.title = 'done';
+</script></body></html>

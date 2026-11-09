@@ -94,6 +94,43 @@ Das Leitprinzip stammt aus dem bekanntesten Beispiel dafür, Guilty Gear Xrd (Ar
 6. **Umgebung:** Sobel-Outline-Pass + Barriere-Unlit-Material
 7. **Screenshot-Test:** zufällige Frames neben echte Anime-Stills legen und alles killen, was 3D wirkt
 
+## Prototyp (umgesetzt)
+
+`FightCore/tools/anime/anime.html` rendert eine Szene mit genau diesen Techniken. Die Shader sind kurz und
+lassen sich fast 1:1 als HLSL in Unreal-Material-Custom-Nodes übernehmen:
+
+| Vorher (Platzhalter) | Anime-Pipeline | Impact-Frame |
+|---|---|---|
+| ![](preview/look_before.png) | ![](preview/look_anime.png) | ![](preview/look_impact.png) |
+
+**Enthalten:**
+
+| Technik | Umsetzung im Prototyp |
+|---|---|
+| Toon-Shading | Ein harter Terminator, Licht pro Charakter, Schattenfarben farbverschoben (lila statt grau) |
+| Gesichter | Eigene Lichtrichtung von vorne, dadurch fast immer hell (ersetzt später die SDF-Map) |
+| Haare | Harte Glanzband-Linie statt Specular |
+| Outlines | Inverted Hull mit fester Pixelbreite |
+| Umgebung | 3-Ton-Shading + Tuschelinien aus Tiefen- und Normalen-Sprüngen (Post-Pass) |
+| Impact-Frame | Invertieren, auf Tusche crushen, hellste Stellen rot, Speedlines zum Trefferpunkt |
+
+**Was der Prototyp gezeigt hat:**
+- Flache Umgebung wirkt erst mit Tuschelinien „gezeichnet“. Ohne Linien sieht sie nach Low-Poly aus.
+- Gesichter brauchen zwingend eigene Licht-Kontrolle. Sonst landen sie bei Kamera hinter dem Spieler oft im
+  Schatten.
+- Feine Texturdetails (z. B. Fliesenlinien) werden auf Distanz zu Matsch. Lieber als Geometrie oder Linien-Pass.
+- Der Impact-Frame funktioniert sofort, auch mit Platzhalter-Figuren.
+
+**Im Unreal-Projekt schon drin:**
+- Kamera-Post-Process ohne Motion Blur, Auto-Exposure, AO, Vignette und chromatische Aberration
+- Stepped Animation: Kleidungs- und Körper-Meshes ticken mit 12 fps
+- Weißer Impact-Blitz im HUD (wird durch den echten Impact-Frame-Post-Process ersetzt)
+
+**Braucht den Editor (nicht per Code möglich):**
+- Toon-Master-Material (Unlit + Custom Node mit dem Shader oben)
+- Outline-Material für den Hull
+- Post-Process-Material für Linien und Impact-Frame
+
 ## Hinweis zum Stil
 
 Den Zeichenstil eines Genres nachzuempfinden ist unproblematisch. Wir kopieren aber keine konkreten

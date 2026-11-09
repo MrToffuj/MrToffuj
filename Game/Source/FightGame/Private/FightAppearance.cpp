@@ -29,6 +29,9 @@ namespace
 		C->SetSkeletalMeshAsset(Mesh);
 		C->SetupAttachment(Parent);
 		C->RegisterComponent();
+		// limited animation: poses update 12 times a second and hold in between, like drawn animation.
+		// The simulation still runs at 60 Hz, only the look is stepped.
+		C->SetComponentTickInterval(1.f / 12.f);
 		return C;
 	}
 }
