@@ -95,6 +95,7 @@ public:
 	virtual bool SupportsKeyboardFocus() const override { return true; }
 	virtual FReply OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
 	virtual FReply OnFocusReceived(const FGeometry& Geometry, const FFocusEvent& Event) override;
+	virtual FReply OnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override;
 
 private:
 	FFightMenuPage Current;

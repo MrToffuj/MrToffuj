@@ -15,6 +15,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/SViewport.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -376,6 +377,14 @@ FReply SFightMenu::OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEven
 	return FReply::Unhandled();
 }
 
+FReply SFightMenu::OnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event)
+{
+	// a click on the empty white area would otherwise hand keyboard and pad to the game viewport
+	for (const TSharedRef<SFightMenuRow>& Row : RowWidgets)
+		if (Row->SupportsKeyboardFocus()) return FReply::Handled().SetUserFocus(Row, EFocusCause::Mouse);
+	return FReply::Handled();
+}
+
 FReply SFightMenu::OnFocusReceived(const FGeometry& Geometry, const FFocusEvent& Event)
 {
 	// the screen itself got focus (clicked the background, input mode change): hand it to a row
@@ -476,6 +485,16 @@ void FFightMenus::Refresh()
 void FFightMenus::Tick(float DeltaSeconds)
 {
 	if (!bOpen) return;
+
+	// If the game viewport grabbed focus (a click, alt-tab, a controller waking up), give it back
+	// to the menu. Only from the viewport, so editor panels around a PIE window stay usable.
+	UWorld* W = World.Get();
+	UGameViewportClient* Viewport = W ? W->GetGameViewport() : nullptr;
+	const TSharedPtr<SWidget> Focused = FSlateApplication::Get().GetUserFocusedWidget(0);
+	if (Widget && Viewport && Focused.IsValid() && Focused == Viewport->GetGameViewportWidget() &&
+		!Widget->HasAnyUserFocusOrFocusedDescendants())
+		Widget->FocusFirst();
+
 	UFightOnline* O = Online();
 	if (!O) return;
 
