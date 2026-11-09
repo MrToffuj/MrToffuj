@@ -16,7 +16,7 @@ namespace fc {
 //  Guard + Dash            -> Dodge
 //  Mod + Guard (halten)    -> Rückfluss (Heilung, steht still)
 //  Mod + Dash              -> Verstärkung an/aus
-//  Assist (R3)             -> Begleiter rufen: neutral Angriff, vor Druck, hoch Anti-Air, runter Schutz
+//  Assist (R3)             -> Begleiter rufen: neutral Angriff, vor Druck, seitlich Anti-Air, zurück Schutz
 enum Button : uint16_t {
     BtnLight = 1 << 0,
     BtnHeavy = 1 << 1,
@@ -29,7 +29,10 @@ enum Button : uint16_t {
     BtnAssist = 1 << 8,
 };
 
-// Richtung im Numpad-Format relativ zum Gegner: 6 vor, 4 zurück, 8/2 Sidestep, 5 neutral.
+// Richtung im Numpad-Format, so wie der Stick aus der Kamera HINTER dem Kämpfer aussieht:
+//   7 8 9      8 = auf den Gegner zu, 2 = zurück
+//   4 5 6      4 / 6 = seitlich (um den Gegner herum)
+//   1 2 3      5 = neutral
 struct FrameInput {
     uint8_t dir = 5;
     uint16_t buttons = 0;

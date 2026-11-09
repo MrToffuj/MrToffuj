@@ -30,8 +30,8 @@ public:
                 break;
             }
             case kFoldStep: {
-                // Kurz-Teleport: 4 Einheiten nach vorne (oder zurück bei Richtung 4)
-                Fx dist = Fx::fromInt(me.input.current().dir == 4 ? -4 : 4);
+                // Kurz-Teleport: 4 Einheiten nach vorne (oder zurück, wenn der Stick nach hinten zeigt)
+                Fx dist = Fx::fromInt(me.input.current().dir <= 3 ? -4 : 4);
                 c.emit(ImpactKind::TechniqueFx, me.pos, {}, Fx{}, ImpactClass::Light, 2);
                 me.pos += me.facing * dist;
                 c.emit(ImpactKind::TechniqueFx, me.pos, {}, Fx{}, ImpactClass::Light, 2);

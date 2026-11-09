@@ -10,7 +10,7 @@
 namespace fc {
 
 enum class CompanionType : uint8_t { Striker, Zoner, Support, Guard };
-// Richtung beim Assist-Druck: neutral = Attack, vorwärts = Pressure, hoch (8) = AntiAir, runter (2) = Protect
+// Richtung beim Assist-Druck: neutral = Attack, vor (7/8/9) = Pressure, seitlich (4/6) = AntiAir, zurück (1/2/3) = Protect
 enum class AssistRole : uint8_t { Attack = 0, Pressure = 1, AntiAir = 2, Protect = 3 };
 // Generische Verhaltens-Bausteine, aus denen jede Begleiter-Aktion gebaut wird
 enum class AssistKind : uint8_t {

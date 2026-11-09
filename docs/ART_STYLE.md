@@ -34,8 +34,11 @@ Ziel: So 2D wie möglich. Pausiere irgendwann → es soll aussehen wie ein Key-F
 
 ## Kamera
 
-- Niedriges FOV (~30–40°) für flachen, „gezeichneten“ Look.
-- Cinematic-Kameras für Techniken & Realm-Öffnung (Spezialaufnahmen, Dutch Angles, Close-ups).
+- **Verfolger-Kamera hinter dem eigenen Kämpfer** mit Lock-on auf den Gegner (3D-Arena-Fighter).
+- Moderates FOV (~60°), leicht über die Schulter versetzt; ganz nah am Gegner zieht sie zurück.
+- Cinematic-Kameras für Max Output & Realm-Öffnung (Spezialaufnahmen, Dutch Angles, Close-ups,
+  dort gern niedriges FOV ~30° für den flachen, „gezeichneten“ Look).
+- Lokales 1v1: Splitscreen nebeneinander. Auf Handhelds ist Online/CPU der Hauptmodus (Vollbild).
 
 ## Hintergründe
 

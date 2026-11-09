@@ -180,9 +180,14 @@ void AFightDirector::SpawnVisuals()
 		FVector::ZeroVector);
 	FloorVisual->SetActorLocation(FVector(0.f, 0.f, -10.f));
 
-	Camera = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform::Identity, Params);
-	Camera->GetCameraComponent()->SetFieldOfView(35.f); // niedriges FOV = flacher, "gezeichneter" Look
-	Camera->GetCameraComponent()->SetConstraintAspectRatio(false);
+	const float Fov = GetDefault<UFightGameSettings>()->CameraFOV;
+	for (int32 i = 0; i < 2; ++i)
+	{
+		ACameraActor* Cam = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform::Identity, Params);
+		Cam->GetCameraComponent()->SetFieldOfView(Fov);
+		Cam->GetCameraComponent()->SetConstraintAspectRatio(false);
+		Cameras.Add(Cam);
+	}
 }
 
 void AFightDirector::Tick(float DeltaSeconds)
@@ -193,8 +198,9 @@ void AFightDirector::Tick(float DeltaSeconds)
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
 	APlayerController* PC0 = UGameplayStatics::GetPlayerController(this, 0);
 	APlayerController* PC1 = UGameplayStatics::GetPlayerController(this, 1);
-	for (APlayerController* PC : { PC0, PC1 })
-		if (PC && Camera && PC->GetViewTarget() != Camera) PC->SetViewTarget(Camera);
+	APlayerController* PCs[2] = { PC0, PC1 };
+	for (int32 i = 0; i < 2; ++i)
+		if (PCs[i] && Cameras.IsValidIndex(i) && PCs[i]->GetViewTarget() != Cameras[i]) PCs[i]->SetViewTarget(Cameras[i]);
 
 	// Tastatur kommt immer am Spieler-0-Controller an -> beide Tastatur-Layouts dort lesen
 	Samplers[0].Sample(PC0, PC0, S->Gamepad, S->KeyboardP1);
@@ -217,7 +223,7 @@ void AFightDirector::SimulateFrame()
 
 	const int32 Frame = Session->frame();
 	for (int32 p = 0; p < 2; ++p)
-		Session->setInput(p, Frame, Samplers[p].Build(ScreenForwardSign(p), S->StickDeadzone));
+		Session->setInput(p, Frame, Samplers[p].Build(S->StickDeadzone));
 
 	Events.clear();
 	Session->advance(&Events);
@@ -227,11 +233,11 @@ void AFightDirector::SimulateFrame()
 		RestartMatch();
 }
 
-float AFightDirector::ScreenForwardSign(int32 Player) const
+int32 AFightDirector::GetPlayerIndex(const APlayerController* PC) const
 {
-	if (!Camera) return Player == 0 ? 1.f : -1.f;
-	const FVector Facing = FightUnits::ToWorldDir(Session->state().f[Player].facing);
-	return FVector::DotProduct(Facing, Camera->GetActorRightVector()) >= 0.f ? 1.f : -1.f;
+	for (int32 i = 0; i < 2; ++i)
+		if (PC && PC == UGameplayStatics::GetPlayerController(this, i)) return i;
+	return -1;
 }
 
 void AFightDirector::HandleEvent(const fc::ImpactEvent& E)
@@ -318,44 +324,50 @@ void AFightDirector::Present(float Alpha, float DeltaSeconds)
 	for (int32 i = 0; i < 4; ++i) WallVisuals[i]->SetVisible(!State.walls[i].broken);
 
 	ImpactFlash = FMath::Max(0.f, ImpactFlash - DeltaSeconds * 8.f);
-	UpdateCamera(DeltaSeconds);
+	UpdateCameras(DeltaSeconds);
 
 	if (GetDefault<UFightGameSettings>()->bDrawHitboxes) DrawHitboxes();
 }
 
-void AFightDirector::UpdateCamera(float DeltaSeconds)
+void AFightDirector::UpdateCameras(float DeltaSeconds)
 {
-	if (!Camera) return;
-	const FVector A = FighterVisuals[0]->GetActorLocation();
-	const FVector B = FighterVisuals[1]->GetActorLocation();
-	FVector Axis = B - A;
-	Axis.Z = 0.f;
-	const float Separation = Axis.Size();
-	if (Separation > 1.f)
-	{
-		// Kamera schaut senkrecht auf die Achse zwischen den Kämpfern (seitliche Fighting-Game-Ansicht)
-		const FVector Right = Axis / Separation;
-		FVector Forward(Right.Y, -Right.X, 0.f);
-		if (bCameraInitialized && FVector::DotProduct(Forward, CameraForward) < 0.f) Forward = -Forward;
-		const float Blend = bCameraInitialized ? FMath::Min(1.f, DeltaSeconds * 6.f) : 1.f;
-		CameraForward = (CameraForward + (Forward - CameraForward) * Blend).GetSafeNormal();
-	}
-
-	const float HalfTan = FMath::Tan(FMath::DegreesToRadians(35.f * 0.5f));
-	const float Distance = FMath::Clamp((Separation * 0.5f + 250.f) / HalfTan, 700.f, 3200.f);
-	const FVector Mid = (A + B) * 0.5f + FVector(0.f, 0.f, 110.f);
-	const FVector Target = Mid - CameraForward * Distance + FVector(0.f, 0.f, 60.f);
-	CameraLocation = bCameraInitialized ? FMath::VInterpTo(CameraLocation, Target, DeltaSeconds, 8.f) : Target;
-	bCameraInitialized = true;
-
+	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
 	FVector ShakeOffset = FVector::ZeroVector;
 	if (ShakeTime > 0.f)
 	{
 		ShakeTime -= DeltaSeconds;
 		ShakeOffset = FVector(FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f)) * ShakeStrength;
 	}
-	Camera->SetActorLocation(CameraLocation + ShakeOffset);
-	Camera->SetActorRotation((Mid - CameraLocation).Rotation());
+
+	for (int32 i = 0; i < Cameras.Num(); ++i)
+	{
+		FFightChaseCamera& Cam = CameraState[i];
+		const FVector Self = FighterVisuals[i]->GetActorLocation();
+		const FVector Opponent = FighterVisuals[1 - i]->GetActorLocation();
+
+		// Lock-on: Kamera steht hinter dem eigenen Kämpfer und blickt Richtung Gegner
+		FVector ToOpponent = Opponent - Self;
+		ToOpponent.Z = 0.f;
+		const float Distance = ToOpponent.Size();
+		if (Distance > 1.f)
+		{
+			const FVector Wanted = ToOpponent / Distance;
+			const float Blend = Cam.bInitialized ? FMath::Min(1.f, DeltaSeconds * S->CameraFollowSpeed * 0.8f) : 1.f;
+			Cam.Forward = (Cam.Forward + (Wanted - Cam.Forward) * Blend).GetSafeNormal2D();
+		}
+		const FVector Right = FVector::CrossProduct(FVector::UpVector, Cam.Forward);
+
+		// Ganz nah am Gegner etwas zurückziehen, damit beide im Bild bleiben
+		const float Back = S->CameraDistance + FMath::Max(0.f, 300.f - Distance) * 0.5f;
+		const FVector Target = Self - Cam.Forward * Back + Right * S->CameraShoulderOffset + FVector(0.f, 0.f, S->CameraHeight);
+		const FVector LookAt = Self + Cam.Forward * FMath::Clamp(Distance * 0.6f, 200.f, 900.f) + FVector(0.f, 0.f, 110.f);
+
+		Cam.Location = Cam.bInitialized ? FMath::VInterpTo(Cam.Location, Target, DeltaSeconds, S->CameraFollowSpeed) : Target;
+		Cam.bInitialized = true;
+
+		Cameras[i]->SetActorLocation(Cam.Location + ShakeOffset);
+		Cameras[i]->SetActorRotation((LookAt - Cam.Location).Rotation());
+	}
 }
 
 void AFightDirector::DrawHitboxes() const

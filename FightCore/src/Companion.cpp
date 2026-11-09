@@ -149,9 +149,10 @@ void tryAssistCommand(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
     const int a = f.input.pressAge(BtnAssist, kBufferWindow);
     if (a < 0) return;
     const uint8_t dir = f.input.ago(a).dir;
-    const AssistRole role = dir == 6 ? AssistRole::Pressure
-                          : dir == 8 ? AssistRole::AntiAir
-                          : dir == 2 ? AssistRole::Protect : AssistRole::Attack;
+    const AssistRole role = dir >= 7 ? AssistRole::Pressure                 // vor
+                          : dir <= 3 ? AssistRole::Protect                  // zurück
+                          : dir == 4 || dir == 6 ? AssistRole::AntiAir      // seitlich
+                          : AssistRole::Attack;
     const int slot = pickSlot(m, s, owner, role);
     if (slot < 0) return; // bleibt gebuffert
     f.input.consume(BtnAssist, kBufferWindow);

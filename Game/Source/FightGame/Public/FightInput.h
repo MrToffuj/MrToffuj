@@ -15,8 +15,9 @@ public:
 	void Sample(const APlayerController* Own, const APlayerController* KeyboardOwner, const FFightBindings& Pad,
 		const FFightBindings& Keys);
 
-	// Einmal pro Sim-Tick. ScreenForwardSign: +1 wenn "Stick rechts" für diesen Kämpfer "vorwärts" ist, sonst -1.
-	fc::FrameInput Build(float ScreenForwardSign, float Deadzone);
+	// Einmal pro Sim-Tick. Die Kamera sitzt hinter dem Kämpfer, daher entspricht der Stick direkt
+	// der Sim-Richtung: hoch = zum Gegner, seitlich = umkreisen.
+	fc::FrameInput Build(float Deadzone);
 
 private:
 	uint16 Held = 0;

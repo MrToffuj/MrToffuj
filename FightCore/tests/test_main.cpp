@@ -111,6 +111,21 @@ static void testCompanionFuzz() {
     CHECK(hashState(r) == hashState(a));
 }
 
+static void testMovementRelativeToOpponent() {
+    std::puts("stick: hoch = zum gegner, seitlich = umkreisen");
+    const MatchSetup s = makeSetup(bodies::brawler(), &glutkern(), bodies::brawler(), &glutkern());
+    MatchState m = createMatch(s);
+    const Fx start = length(m.f[1].pos - m.f[0].pos);
+    run(m, s, 30, [](int, FrameInput& p0, FrameInput&) { p0.dir = 8; });
+    CHECK(length(m.f[1].pos - m.f[0].pos) < start);
+
+    m = createMatch(s);
+    run(m, s, 60, [](int, FrameInput& p0, FrameInput&) { p0.dir = 6; });
+    // Seitwärts: Abstand bleibt ungefähr gleich, aber P0 hat sich seitlich bewegt
+    CHECK(m.f[0].pos.x != Fx{});
+    CHECK(abs(length(m.f[1].pos - m.f[0].pos) - start) < Fx::ratio(1, 2));
+}
+
 static void testHitBlockParryGrab() {
     std::puts("hit / block / parry / grab");
     const MatchSetup s = makeSetup(bodies::brawler(), &glutkern(), bodies::brawler(), &glutkern());
@@ -382,7 +397,7 @@ static void testAssistRoles() {
     std::puts("begleiter: richtung = rolle");
     const MatchSetup s = makeSetup(bodies::summoner(), &glutkern(), bodies::brawler(), &glutkern(), &companions::bladeWolf());
     const std::pair<uint8_t, AssistRole> cases[] = {
-        {5, AssistRole::Attack}, {6, AssistRole::Pressure}, {8, AssistRole::AntiAir}, {2, AssistRole::Protect}};
+        {5, AssistRole::Attack}, {8, AssistRole::Pressure}, {6, AssistRole::AntiAir}, {2, AssistRole::Protect}};
     for (auto [dir, role] : cases) {
         MatchState m = createMatch(s);
         run(m, s, 2, assist(dir));
@@ -577,6 +592,7 @@ static void testRollbackSession() {
 int main() {
     testBodiesBalanced();
     testDeterminismAndRollback();
+    testMovementRelativeToOpponent();
     testHitBlockParryGrab();
     testZeroSpark();
     testSuperArmor();

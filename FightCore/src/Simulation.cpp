@@ -245,7 +245,7 @@ Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
     if ((a = age(BtnGrab)) >= 0 && (allowed & catBit(MoveCategory::Grab))) { Cmd c; c.move = kGrab; return ok(c, BtnGrab, a); }
     if (!(allowed & catBit(MoveCategory::Normal))) return {};
     if ((a = age(BtnHeavy)) >= 0) {
-        Cmd c; c.move = f.input.ago(a).dir == 2 ? kLauncher : kHeavy; return ok(c, BtnHeavy, a);
+        Cmd c; c.move = f.input.ago(a).dir <= 3 ? kLauncher : kHeavy; return ok(c, BtnHeavy, a); // zurück + Heavy
     }
     if ((a = age(BtnLight)) >= 0) { Cmd c; c.move = kLight; return ok(c, BtnLight, a); }
     return {};
@@ -282,14 +282,14 @@ Vec3 dirToVelocity(const FighterState& f, const BodyStats& st, uint8_t dir, int 
     Fx k = Fx::ratio(speedPct, 100);
     Fx w = st.walkSpeed * k, b = st.backSpeed * k, sd = st.sideSpeed * k;
     switch (dir) {
-        case 6: return f.facing * w;
-        case 4: return f.facing * -b;
-        case 8: return right * -sd;
-        case 2: return right * sd;
-        case 9: return f.facing * w + right * -sd;
-        case 7: return f.facing * -b + right * -sd;
-        case 3: return f.facing * w + right * sd;
-        case 1: return f.facing * -b + right * sd;
+        case 8: return f.facing * w;
+        case 2: return f.facing * -b;
+        case 4: return right * -sd;
+        case 6: return right * sd;
+        case 7: return f.facing * w + right * -sd;
+        case 9: return f.facing * w + right * sd;
+        case 1: return f.facing * -b + right * -sd;
+        case 3: return f.facing * -b + right * sd;
         default: return {};
     }
 }
@@ -397,8 +397,8 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
                     break;
                 }
                 const bool dodge = f.input.held(BtnGuard);
-                Vec3 dir = in.dir == 4 ? f.facing * Fx::fromInt(-1) : f.facing;
-                if (in.dir == 8 || in.dir == 2) dir = normalizeXZ(dirToVelocity(f, st, in.dir, 100), f.facing);
+                Vec3 dir = in.dir == 2 ? f.facing * Fx::fromInt(-1) : f.facing;
+                if (in.dir == 4 || in.dir == 6) dir = normalizeXZ(dirToVelocity(f, st, in.dir, 100), f.facing);
                 f.vel = dir * (st.dashSpeed * Fx::ratio(speedPctOf(m, s, i), 100));
                 f.state = dodge ? FState::Dodge : FState::Dash;
                 f.stateFrame = 0;

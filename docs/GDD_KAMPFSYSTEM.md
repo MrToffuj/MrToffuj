@@ -34,7 +34,8 @@ dieselben Systeme. Der Spielstil entsteht nur aus der Kombi.
 
 | Input | Aktion |
 |---|---|
-| Light / Heavy / Grab | Normals (2 + Heavy = Launcher) |
+| Stick | hoch = zum Gegner, runter = zurück, links/rechts = umkreisen (Kamera hinter dem Kämpfer) |
+| Light / Heavy / Grab | Normals (zurück + Heavy = Launcher) |
 | Guard (R1) | Blocken, frisch gedrückt kurz vor Treffer = **Parry** |
 | Guard + Dash | **Dodge** (Unverwundbarkeit) |
 | Mod (L1) + Light / Heavy / Grab | Skill 1 / 2 / 3 (Offense / Utility / Defense) |
@@ -189,7 +190,8 @@ Summoner + Schattenmenagerie geht: Assist + 2 Bestien (3 Slots).
 
 ### Steuerung
 
-- **Assist-Button + Richtung:** neutral = Angriff, vorwärts = Druck, hoch = Anti-Air, runter = Schutz.
+- **Assist-Button + Richtung:** neutral = Angriff, vor = Druck, seitlich = Anti-Air, zurück = Schutz.
+  (Mit der Kamera hinter dem Kämpfer sind „hoch“ und „vorwärts“ dieselbe Stick-Richtung, daher liegt Anti-Air auf seitlich.)
 - Der passende Begleiter wird automatisch gewählt (Rolle → bevorzugter Typ).
 - Begleiter handeln nur auf Befehl, sonst folgen sie dem Spieler. Kein Autopilot.
 - Pro Begleiter ein Cooldown nach jeder Aktion.

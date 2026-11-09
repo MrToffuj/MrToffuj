@@ -14,6 +14,13 @@ class UDirectionalLightComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFightImpact, const FFightImpact&, Impact);
 
+struct FFightChaseCamera
+{
+	FVector Forward = FVector::ForwardVector;
+	FVector Location = FVector::ZeroVector;
+	bool bInitialized = false;
+};
+
 // Brücke zwischen FightCore und Unreal:
 //  - tickt die deterministische Simulation mit festen 60 Hz (unabhängig von der Render-FPS)
 //  - liest Controller/Tastatur für beide Spieler
@@ -42,6 +49,8 @@ public:
 	const fc::MatchState& GetState() const { return Session->state(); }
 	const fc::MatchSetup& GetSetup() const { return Session->setup(); }
 	int32 GetRollbackCount() const { return Session ? Session->rollbackCount() : 0; }
+	// Welcher Kämpfer gehört zu diesem lokalen Controller? (0/1, -1 = keiner)
+	int32 GetPlayerIndex(const APlayerController* PC) const;
 	float GetImpactFlash() const { return ImpactFlash; }
 
 	static constexpr double FixedStep = 1.0 / 60.0;
@@ -52,9 +61,8 @@ private:
 	void SimulateFrame();
 	void HandleEvent(const fc::ImpactEvent& Event);
 	void Present(float Alpha, float DeltaSeconds);
-	void UpdateCamera(float DeltaSeconds);
+	void UpdateCameras(float DeltaSeconds);
 	void DrawHitboxes() const;
-	float ScreenForwardSign(int32 Player) const;
 
 	TUniquePtr<fc::Session> Session;
 	fc::MatchState Previous;
@@ -68,16 +76,15 @@ private:
 	float ShakeTime = 0.f;
 	float ShakeStrength = 0.f;
 	float ImpactFlash = 0.f;
-	FVector CameraForward = FVector::ForwardVector;
-	FVector CameraLocation = FVector::ZeroVector;
-	bool bCameraInitialized = false;
+	FFightChaseCamera CameraState[2];
 
 	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> FighterVisuals;
 	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> CompanionVisuals;
 	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> ProjectileVisuals;
 	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> WallVisuals;
 	UPROPERTY() TObjectPtr<AFightShapeVisual> FloorVisual;
-	UPROPERTY() TObjectPtr<ACameraActor> Camera;
+	// Eine Kamera pro Spieler (lokales 1v1 = Splitscreen)
+	UPROPERTY() TArray<TObjectPtr<ACameraActor>> Cameras;
 
 	UPROPERTY(VisibleAnywhere, Category = "Fight") TObjectPtr<USceneComponent> Root;
 	UPROPERTY(VisibleAnywhere, Category = "Fight") TObjectPtr<UDirectionalLightComponent> KeyLight;

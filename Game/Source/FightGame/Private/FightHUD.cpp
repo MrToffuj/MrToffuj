@@ -31,9 +31,6 @@ void AFightHUD::DrawLabel(const FString& Text, float X, float Y, const FLinearCo
 void AFightHUD::DrawHUD()
 {
 	Super::DrawHUD();
-	// Nur einmal zeichnen (zweiter lokaler Spieler teilt sich den Bildschirm)
-	if (PlayerOwner != UGameplayStatics::GetPlayerController(this, 0)) return;
-
 	if (!Director.IsValid())
 		for (TActorIterator<AFightDirector> It(GetWorld()); It; ++It) Director = *It;
 	if (!Director.IsValid() || !Director->HasSession()) return;
@@ -42,16 +39,19 @@ void AFightHUD::DrawHUD()
 	const fc::MatchSetup& Setup = Director->GetSetup();
 	const float W = Canvas->ClipX;
 	const float H = Canvas->ClipY;
-	UiScale = H / 1080.f;
+	// Im Splitscreen ist der Viewport nur halb so breit -> an der kleineren Seite skalieren
+	UiScale = FMath::Min(H / 1080.f, W / 960.f);
 	const float S = UiScale;
 	const float Margin = 40.f * S;
 	const float BarW = W * 0.38f;
+	const int32 Self = FMath::Max(0, Director->GetPlayerIndex(PlayerOwner));
 
-	for (int32 i = 0; i < 2; ++i)
+	for (int32 Side = 0; Side < 2; ++Side)
 	{
+		const int32 i = Side == 0 ? Self : 1 - Self;
 		const fc::FighterState& F = State.f[i];
 		const fc::BodyStats& Stats = Setup.stats[i];
-		const bool bRight = i == 1;
+		const bool bRight = Side == 1;
 		const float X = bRight ? W - Margin - BarW : Margin;
 		const float TextX = bRight ? W - Margin : Margin;
 

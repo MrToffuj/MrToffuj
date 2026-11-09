@@ -62,7 +62,7 @@ void FFightInputSampler::Sample(const APlayerController* Own, const APlayerContr
 	if (AnyDown(Own, Pad.Down) || AnyDown(KeyboardOwner, Keys.Down)) Digital.Y -= 1.f;
 }
 
-fc::FrameInput FFightInputSampler::Build(float ScreenForwardSign, float Deadzone)
+fc::FrameInput FFightInputSampler::Build(float Deadzone)
 {
 	fc::FrameInput In;
 	In.buttons = static_cast<uint16_t>(Held | Latched);
@@ -79,9 +79,9 @@ fc::FrameInput FFightInputSampler::Build(float ScreenForwardSign, float Deadzone
 	V /= Mag;
 	// 8-Wege mit 45°-Sektoren: Achse aktiv ab sin(22,5°)
 	constexpr float Threshold = 0.383f;
-	const int H = V.X * ScreenForwardSign > Threshold ? 1 : (V.X * ScreenForwardSign < -Threshold ? -1 : 0);
+	const int H = V.X > Threshold ? 1 : (V.X < -Threshold ? -1 : 0);
 	const int Vt = V.Y > Threshold ? 1 : (V.Y < -Threshold ? -1 : 0);
-	// Numpad: 7 8 9 / 4 5 6 / 1 2 3, 6 = vorwärts (zum Gegner)
+	// Numpad wie der Stick von hinten: 7 8 9 / 4 5 6 / 1 2 3, 8 = zum Gegner
 	static const uint8 Numpad[3][3] = { { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 } };
 	In.dir = Numpad[Vt + 1][H + 1];
 	return In;

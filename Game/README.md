@@ -31,7 +31,11 @@ Kampfsystem testen können, bevor Modelle und Anime-Shader kommen.
 | Assist | R3 | F | Num8 |
 
 Combos aus der GDD (Mod + Light = Skill 1, Guard + Grab = Essenz-Burst usw.) gelten genauso.
-Rechts auf dem Stick = **vorwärts**, wenn der Gegner rechts steht (automatisch je nach Seite).
+
+**Kamera:** sitzt hinter dem eigenen Kämpfer mit Lock-on auf den Gegner. Stick **hoch = auf den Gegner zu**,
+runter = zurück, links/rechts = um den Gegner herum. Zurück + Heavy = Launcher.
+Lokales 1v1 läuft im Splitscreen (nebeneinander), jeder sieht hinter seinem Kämpfer.
+Kamera-Abstand, Höhe, Schulter-Versatz und FOV: Projekt-Einstellungen → Fight Game → Camera.
 
 Belegung, Loadouts (Body / Technik / Assist pro Spieler), Stick-Deadzone und Debug-Anzeigen:
 **Projekt-Einstellungen → Game → Fight Game**.
@@ -41,9 +45,9 @@ Belegung, Loadouts (Body / Technik / Assist pro Spieler), Stick-Deadzone und Deb
 | Klasse | Aufgabe |
 |---|---|
 | `AFightGameMode` | legt den 2. lokalen Spieler an, spawnt den Director, keine Pawns |
-| `AFightDirector` | fester 60-Hz-Tick über `fc::Session` (rollback-fähig), Input, Interpolation, Kamera, Events |
+| `AFightDirector` | fester 60-Hz-Tick über `fc::Session` (rollback-fähig), Input, Interpolation, Verfolger-Kamera pro Spieler, Events |
 | `FFightInputSampler` | Controller/Tastatur → `fc::FrameInput`, kurze Taps gehen bei niedriger FPS nicht verloren |
-| `AFightHUD` | Platzhalter-HUD (Leben, Essenz, Realm, Cooldowns, Begleiter), skaliert für Handhelds |
+| `AFightHUD` | Platzhalter-HUD pro Viewport (eigene Werte links, Gegner rechts), skaliert für Splitscreen/Handhelds |
 | `AFightShapeVisual` | Platzhalter-Optik aus Engine-Grundformen |
 | `UFightGameSettings` | Belegung, Loadouts, Debug |
 | `Private/FightCore/FC_*.cpp` | binden die FightCore-Quellen in den Unreal-Build ein (nicht bearbeiten) |

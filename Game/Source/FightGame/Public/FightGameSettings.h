@@ -60,6 +60,20 @@ public:
 	// Frames nach Rundenende bis zum automatischen Neustart
 	UPROPERTY(Config, EditAnywhere, Category = "Match") int32 RestartDelayFrames = 180;
 
+	// Verfolger-Kamera hinter dem eigenen Kämpfer, Lock-on auf den Gegner
+	UPROPERTY(Config, EditAnywhere, Category = "Camera", meta = (ClampMin = "200", ClampMax = "1200"))
+	float CameraDistance = 430.f;
+	UPROPERTY(Config, EditAnywhere, Category = "Camera", meta = (ClampMin = "50", ClampMax = "500"))
+	float CameraHeight = 220.f;
+	// Über-die-Schulter-Versatz nach rechts
+	UPROPERTY(Config, EditAnywhere, Category = "Camera", meta = (ClampMin = "-200", ClampMax = "200"))
+	float CameraShoulderOffset = 60.f;
+	UPROPERTY(Config, EditAnywhere, Category = "Camera", meta = (ClampMin = "40", ClampMax = "90"))
+	float CameraFOV = 60.f;
+	// Wie schnell die Kamera der Bewegung folgt (höher = direkter)
+	UPROPERTY(Config, EditAnywhere, Category = "Camera", meta = (ClampMin = "1", ClampMax = "30"))
+	float CameraFollowSpeed = 10.f;
+
 	UPROPERTY(Config, EditAnywhere, Category = "Debug") bool bDrawHitboxes = true;
 	UPROPERTY(Config, EditAnywhere, Category = "Debug") bool bShowFrameInfo = true;
 };

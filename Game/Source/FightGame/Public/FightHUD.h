@@ -7,7 +7,8 @@
 
 class AFightDirector;
 
-// Platzhalter-HUD (Canvas). Skaliert mit der Bildschirmhöhe -> auch auf 7"-Handhelds lesbar.
+// Platzhalter-HUD (Canvas), eins pro Spieler-Viewport: eigene Werte links, Gegner rechts.
+// Skaliert mit der Viewport-Höhe -> auch im Splitscreen und auf 7"-Handhelds lesbar.
 // Wird später durch UMG im Anime-Stil ersetzt.
 UCLASS()
 class FIGHTGAME_API AFightHUD : public AHUD
