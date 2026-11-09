@@ -244,7 +244,23 @@ Opfer-Feld **Begleiter**: HP, Slot sperren, Begleiter dauerhaft verlieren. Ohne 
 
 Bodies ohne Begleiter: ein **Zeit-Pakt** mit hohem Wert gibt einen Paktgeist für die Dauer des Pakts.
 
-## 10. Offene Punkte
+## 10. Spielmodi ✅
+
+| Modus | Spieler | Regeln | Arena |
+|---|---|---|---|
+| **1v1** | 2 | Elimination | 24 × 24 m |
+| **2v2** | 4 | Team-Elimination, kein Friendly Fire | 28 × 28 m |
+| **Brawl** | bis 20 | Free-for-all, Respawn nach 5 s, 5 min Zeitlimit oder 15 K.O.s, meiste K.O.s gewinnen | 120 × 120 m |
+
+- Alle Modi **online oder lokal** (Splitscreen bis 4 Spieler). Nicht volle Lobbys werden mit **Bots**
+  aufgefüllt (3 Stufen: leicht / normal / schwer). Details: [NETWORKING.md](NETWORKING.md).
+- **Lock-on:** automatisch auf den nächsten Gegner, L3 wechselt das Ziel (bleibt dann fest, bis es K.O. ist).
+- **K.O.-Wertung:** Wer den letzten Treffer setzt (auch Realm-Schaden, Brennen), bekommt den K.O.
+- **Realms haben einen Radius** (geschlossen 18 m um den Cast-Punkt, offen 10 m um den Besitzer).
+  Im Brawl kann es mehrere Realms gleichzeitig geben. Wer in einem gegnerischen Realm seinen eigenen
+  öffnet, löst einen Clash gegen dessen Besitzer aus.
+
+## 11. Offene Punkte
 
 - [ ] Restliche 7 Techniken implementieren (Echo braucht noch einen Guard-Begleiter)
 - [ ] Notfall-Pakt mitten im Match, Technik-spezifische Hidden Rewards, Vow-Journal

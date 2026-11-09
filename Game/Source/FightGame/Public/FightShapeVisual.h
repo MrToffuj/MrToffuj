@@ -44,4 +44,8 @@ private:
 	UPROPERTY() TObjectPtr<UStaticMesh> SphereMesh;
 	UPROPERTY() TObjectPtr<UStaticMesh> CylinderMesh;
 	UPROPERTY() TObjectPtr<UMaterialInterface> BaseMaterial;
+
+	// Nur bei Änderung an die GPU schicken
+	FLinearColor CurrentColor = FLinearColor::Transparent;
+	FVector CurrentSize = FVector::ZeroVector;
 };

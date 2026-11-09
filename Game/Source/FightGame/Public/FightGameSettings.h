@@ -22,6 +22,8 @@ struct FFightBindings
 	UPROPERTY(EditAnywhere, Category = "Buttons") TArray<FKey> Mod;
 	UPROPERTY(EditAnywhere, Category = "Buttons") TArray<FKey> Ult;
 	UPROPERTY(EditAnywhere, Category = "Buttons") TArray<FKey> Assist;
+	// Lock-on wechseln (2v2 / Brawl)
+	UPROPERTY(EditAnywhere, Category = "Buttons") TArray<FKey> Target;
 	// Digitale Richtungen (D-Pad / Tasten). Analog-Stick wird zusätzlich gelesen.
 	UPROPERTY(EditAnywhere, Category = "Directions") TArray<FKey> Up;
 	UPROPERTY(EditAnywhere, Category = "Directions") TArray<FKey> Down;
@@ -38,6 +40,8 @@ struct FFightLoadout
 	UPROPERTY(EditAnywhere, Category = "Loadout") EFightTechnique Technique = EFightTechnique::Glutkern;
 	// Nur für Summoner
 	UPROPERTY(EditAnywhere, Category = "Loadout") EFightAssist Assist = EFightAssist::BladeWolf;
+	// Nur 2v2: Team 0 oder 1
+	UPROPERTY(EditAnywhere, Category = "Loadout", meta = (ClampMin = "0", ClampMax = "1")) int32 Team = 0;
 };
 
 UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "Fight Game"))
@@ -55,8 +59,13 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Input", meta = (ClampMin = "0.05", ClampMax = "0.9"))
 	float StickDeadzone = 0.35f;
 
-	UPROPERTY(Config, EditAnywhere, Category = "Match") FFightLoadout Player1;
-	UPROPERTY(Config, EditAnywhere, Category = "Match") FFightLoadout Player2;
+	UPROPERTY(Config, EditAnywhere, Category = "Match") EFightMode Mode = EFightMode::Duel;
+	// Lokale Spieler an diesem Gerät (Splitscreen). Freie Slots werden mit Bots gefüllt.
+	UPROPERTY(Config, EditAnywhere, Category = "Match", meta = (ClampMin = "1", ClampMax = "4")) int32 LocalPlayers = 2;
+	// Loadout pro lokalem Spieler (Index = Spieler)
+	UPROPERTY(Config, EditAnywhere, Category = "Match") TArray<FFightLoadout> Loadouts;
+	// 0 leicht, 1 normal, 2 schwer
+	UPROPERTY(Config, EditAnywhere, Category = "Match", meta = (ClampMin = "0", ClampMax = "2")) int32 BotLevel = 1;
 	// Frames nach Rundenende bis zum automatischen Neustart
 	UPROPERTY(Config, EditAnywhere, Category = "Match") int32 RestartDelayFrames = 180;
 

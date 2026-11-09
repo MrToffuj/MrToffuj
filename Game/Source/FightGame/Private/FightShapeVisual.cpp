@@ -50,11 +50,15 @@ void AFightShapeVisual::SetShape(EFightShape Shape)
 
 void AFightShapeVisual::SetColor(const FLinearColor& Color)
 {
-	if (Material) Material->SetVectorParameterValue(TEXT("Color"), Color);
+	if (!Material || Color.Equals(CurrentColor, 0.002f)) return;
+	CurrentColor = Color;
+	Material->SetVectorParameterValue(TEXT("Color"), Color);
 }
 
 void AFightShapeVisual::SetSizeCm(const FVector& Size)
 {
+	if (Size.Equals(CurrentSize, 0.5f)) return;
+	CurrentSize = Size;
 	Mesh->SetRelativeScale3D(Size / 100.f);
 }
 
@@ -65,6 +69,7 @@ void AFightShapeVisual::SetMeshOffset(const FVector& OffsetCm)
 
 void AFightShapeVisual::SetVisible(bool bVisible)
 {
+	if (IsHidden() == !bVisible) return;
 	SetActorHiddenInGame(!bVisible);
 }
 

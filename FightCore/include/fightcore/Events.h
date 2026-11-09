@@ -16,6 +16,7 @@ enum class ImpactKind : uint8_t {
     RealmOpen, RealmClash, RealmEnd,
     Ignite, Burnout,
     CompanionSummon, CompanionCall, CompanionDown, CompanionRevive, CompanionGone,
+    KO, Respawn,
 };
 
 struct ImpactEvent {

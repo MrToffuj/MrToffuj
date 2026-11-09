@@ -11,7 +11,9 @@ const PactModifiers& mods(const MatchState& m, const MatchSetup& s, int i);
 const TechniqueLogic* logicOf(const MatchSetup& s, int i);
 bool overlap(Vec3 a, Fx ra, Vec3 b, Fx rb);
 Fx distXZ(Vec3 a, Vec3 b);
-bool realmAffects(const MatchState& m, const MatchSetup& s, int target);
+bool realmAffects(const MatchState& m, const MatchSetup& s, int owner, int target);
+bool inRealmArea(const MatchState& m, int owner, Vec3 p);
+int enemyRealmAround(const MatchState& m, int i); // Besitzer eines gegnerischen Realms um i, sonst -1
 void triggerBurnout(MatchState& m, int i, Ev ev);
 void addRealmMeter(FighterState& f, int amount);
 bool hitsFighter(const MatchState& m, int target, Vec3 center, Fx radius);
@@ -27,12 +29,13 @@ struct PendingHit {
     int8_t companion = -1;     // Roster-Index, wenn ein Begleiter der Angreifer ist
     bool link = false;         // Link-Attack (Bond-Stufe 2)
     Vec3 source{};             // Position des Angreifers (Begleiter)
+    int8_t target = -1;        // getroffener Kämpfer
 };
 void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, Ev ev);
 
 // ---- Companion.cpp
 void buildRoster(MatchSetup& s);
-void initCompanions(MatchState& m, const MatchSetup& s);
+void initCompanions(MatchState& m, const MatchSetup& s, int owner);
 int32_t companionUpkeep(const MatchState& m, const MatchSetup& s, int owner);
 void tryAssistCommand(MatchState& m, const MatchSetup& s, int owner, Ev ev);
 void tickCompanions(MatchState& m, const MatchSetup& s, int owner, Ev ev);
@@ -43,7 +46,7 @@ bool projectileHitsCompanion(MatchState& m, const MatchSetup& s, Projectile& p, 
 int shieldingCompanion(const MatchState& m, const MatchSetup& s, int defender, Vec3 source);
 void damageCompanion(MatchState& m, const MatchSetup& s, int owner, int slot, int amount, MoveCategory cat, Ev ev);
 void leash(MatchState& m, const MatchSetup& s, int owner);
-void realmHitsCompanions(MatchState& m, const MatchSetup& s, int target, RealmClass cls, int ownerBond, Ev ev);
+void realmHitsCompanions(MatchState& m, const MatchSetup& s, int realmOwner, RealmClass cls, int ownerBond, Ev ev);
 const MoveDef& companionMove(const MatchSetup& s, int owner, int roster, int16_t move);
 
 } // namespace fc::detail

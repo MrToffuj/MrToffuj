@@ -16,7 +16,7 @@ namespace
 		{ &FFightBindings::Grab, fc::BtnGrab },     { &FFightBindings::Guard, fc::BtnGuard },
 		{ &FFightBindings::Jump, fc::BtnJump },     { &FFightBindings::Dash, fc::BtnDash },
 		{ &FFightBindings::Mod, fc::BtnMod },       { &FFightBindings::Ult, fc::BtnUlt },
-		{ &FFightBindings::Assist, fc::BtnAssist },
+		{ &FFightBindings::Assist, fc::BtnAssist }, { &FFightBindings::Target, fc::BtnTarget },
 	};
 
 	bool AnyDown(const APlayerController* PC, const TArray<FKey>& Keys)

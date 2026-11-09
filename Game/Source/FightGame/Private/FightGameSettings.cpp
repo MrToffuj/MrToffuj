@@ -14,6 +14,7 @@ UFightGameSettings::UFightGameSettings()
 	Gamepad.Dash   = { EKeys::Gamepad_RightTrigger };
 	Gamepad.Ult    = { EKeys::Gamepad_LeftTrigger };
 	Gamepad.Assist = { EKeys::Gamepad_RightThumbstick };
+	Gamepad.Target = { EKeys::Gamepad_LeftThumbstick };
 	Gamepad.Up     = { EKeys::Gamepad_DPad_Up };
 	Gamepad.Down   = { EKeys::Gamepad_DPad_Down };
 	Gamepad.Left   = { EKeys::Gamepad_DPad_Left };
@@ -28,6 +29,7 @@ UFightGameSettings::UFightGameSettings()
 	KeyboardP1.Dash   = { EKeys::E };
 	KeyboardP1.Ult    = { EKeys::R };
 	KeyboardP1.Assist = { EKeys::F };
+	KeyboardP1.Target = { EKeys::Tab };
 	KeyboardP1.Up     = { EKeys::W };
 	KeyboardP1.Down   = { EKeys::S };
 	KeyboardP1.Left   = { EKeys::A };
@@ -42,14 +44,21 @@ UFightGameSettings::UFightGameSettings()
 	KeyboardP2.Dash   = { EKeys::NumPadSix };
 	KeyboardP2.Ult    = { EKeys::NumPadSeven };
 	KeyboardP2.Assist = { EKeys::NumPadEight };
+	KeyboardP2.Target = { EKeys::NumPadNine };
 	KeyboardP2.Up     = { EKeys::Up };
 	KeyboardP2.Down   = { EKeys::Down };
 	KeyboardP2.Left   = { EKeys::Left };
 	KeyboardP2.Right  = { EKeys::Right };
 
-	Player1.Body = EFightBody::Summoner;
-	Player1.Technique = EFightTechnique::Glutkern;
-	Player1.Assist = EFightAssist::BladeWolf;
-	Player2.Body = EFightBody::Caster;
-	Player2.Technique = EFightTechnique::Nullraum;
+	Loadouts.SetNum(4);
+	Loadouts[0].Body = EFightBody::Summoner;
+	Loadouts[0].Technique = EFightTechnique::Glutkern;
+	Loadouts[1].Body = EFightBody::Caster;
+	Loadouts[1].Technique = EFightTechnique::Nullraum;
+	Loadouts[1].Team = 1;
+	Loadouts[2].Body = EFightBody::Heavy;
+	Loadouts[2].Technique = EFightTechnique::Schattenmenagerie;
+	Loadouts[3].Body = EFightBody::Speedster;
+	Loadouts[3].Technique = EFightTechnique::Nullraum;
+	Loadouts[3].Team = 1;
 }

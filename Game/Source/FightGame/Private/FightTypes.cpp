@@ -1,6 +1,6 @@
 #include "FightTypes.h"
 
-static_assert(static_cast<int>(EFightImpactKind::CompanionGone) == static_cast<int>(fc::ImpactKind::CompanionGone),
+static_assert(static_cast<int>(EFightImpactKind::Respawn) == static_cast<int>(fc::ImpactKind::Respawn),
 	"EFightImpactKind muss fc::ImpactKind spiegeln");
 
 FFightImpact FightUnits::ToImpact(const fc::ImpactEvent& E)

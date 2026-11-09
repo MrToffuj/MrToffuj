@@ -43,8 +43,8 @@ private:
     struct Slot {
         int32_t frame = -1;
         MatchState state{};
-        FrameInput input[2]{};
-        bool confirmed[2] = {false, false};
+        FrameInput input[kMaxFighters]{};
+        bool confirmed[kMaxFighters] = {};
     };
 
     Slot& slot(int32_t f) { return history_[static_cast<size_t>(f % kHistory)]; }

@@ -16,6 +16,7 @@ void Session::touch(int32_t f) {
 }
 
 bool Session::setInput(int player, int32_t f, FrameInput in) {
+    if (player < 0 || player >= setup_.count) return false;
     if (f < 0 || f <= state_.frame - kHistory || f >= state_.frame + kHistory) return false;
     in.consumed = 0;
     if (f < state_.frame) {
@@ -43,8 +44,8 @@ FrameInput Session::predict(int player, int32_t f) const {
 void Session::simulate(int32_t f, EventSink* events) {
     Slot& s = slot(f);
     s.state = state_;
-    for (int p = 0; p < 2; ++p)
-        if (!s.confirmed[p]) s.input[p] = predict(p, f);
+    for (int p = 0; p < setup_.count; ++p)
+        if (!s.confirmed[p] && !setup_.loadout[p].bot) s.input[p] = predict(p, f);
     step(state_, setup_, s.input, events);
 }
 

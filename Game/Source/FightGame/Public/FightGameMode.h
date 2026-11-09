@@ -5,7 +5,7 @@
 
 #include "FightGameMode.generated.h"
 
-// Lokales 1v1: legt den zweiten lokalen Spieler an und startet den FightDirector.
+// Legt die lokalen Spieler an (1-4, Splitscreen) und startet den FightDirector.
 // Es gibt keine Pawns – die Kämpfer leben in der deterministischen Simulation.
 UCLASS()
 class FIGHTGAME_API AFightGameMode : public AGameModeBase

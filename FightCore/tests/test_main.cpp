@@ -1,4 +1,5 @@
 // Tests ohne Framework für alle Kernsysteme aus der GDD.
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
@@ -227,14 +228,14 @@ static void testRealmLockAndNullborn() {
     m.f[0].realmMeter = kRealmMeterMax;
     EventSink ev;
     run(m, s, kRealmCastFrames + 3, press(BtnMod | BtnUlt), &ev);
-    CHECK(m.realm.owner == 0 && saw(ev, ImpactKind::RealmOpen));
+    CHECK(m.f[0].realm.active() && saw(ev, ImpactKind::RealmOpen));
     CHECK(m.f[1].state == FState::Locked);
 
     s = makeSetup(bodies::technician(), &nullraum(), bodies::nullborn(), nullptr);
     m = createMatch(s);
     m.f[0].realmMeter = kRealmMeterMax;
     run(m, s, kRealmCastFrames + 3, press(BtnMod | BtnUlt));
-    CHECK(m.realm.owner == 0 && m.f[1].state != FState::Locked);
+    CHECK(m.f[0].realm.active() && m.f[1].state != FState::Locked);
 }
 
 static void testRealmClash() {
@@ -248,7 +249,7 @@ static void testRealmClash() {
         if (f == 10) p1.buttons = BtnMod | BtnUlt;
         if (f > 75 && f % 2 == 0) p1.buttons = BtnLight;
     });
-    CHECK(m.realm.owner == 1);
+    CHECK(m.f[1].realm.active() && !m.f[0].realm.active());
 }
 
 static void testWardBlocksSureHit() {
@@ -589,6 +590,127 @@ static void testRollbackSession() {
     CHECK(a.rollbackCount() > 0 && a.lastRollbackDepth() <= kDelay);
 }
 
+// ------------------------------------------------------------------ Modi, Teams, Bots
+
+static FrameInput none20[kMaxFighters] = {};
+
+static void testTeamsNoFriendlyFire() {
+    std::puts("2v2: teams, kein friendly fire, elimination");
+    Loadout humans[2];
+    humans[0] = {&bodies::brawler(), &glutkern(), {}, {}, nullptr, 0};
+    humans[1] = {&bodies::brawler(), &glutkern(), {}, {}, nullptr, 0};
+    MatchSetup s = buildMatch(GameMode::Teams, humans, 2, 1, 7);
+    CHECK(s.count == 4);
+    int team0 = 0;
+    for (int i = 0; i < 4; ++i) team0 += s.loadout[i].team == 0;
+    CHECK(team0 == 2);
+    CHECK(!s.loadout[0].bot && s.loadout[3].bot);
+    // Bots aus, damit nur getestet wird, was wir steuern
+    for (int i = 0; i < 4; ++i) s.loadout[i].bot = false;
+
+    MatchState m = createMatch(s);
+    // Teamkollege steht direkt vor P0 -> Light darf ihm nichts tun
+    m.f[1].pos = m.f[0].pos + Vec3{Fx{}, Fx{}, Fx::ratio(14, 10)};
+    m.f[0].facing = {Fx{}, Fx{}, Fx::fromInt(1)};
+    const int16_t hp = m.f[1].health;
+    FrameInput in[kMaxFighters] = {};
+    in[0].buttons = BtnLight;
+    step(m, s, in);
+    for (int f = 0; f < 10; ++f) step(m, s, none20);
+    CHECK(m.f[1].health == hp);
+
+    // Team 1 komplett K.O. -> Team 0 gewinnt
+    for (int i = 0; i < 4; ++i)
+        if (m.f[i].team == 1) m.f[i].health = 0;
+    step(m, s, none20);
+    CHECK(m.winner == 0);
+}
+
+static void testTargetSwitch() {
+    std::puts("lock-on: naechster gegner + zielwechsel");
+    MatchSetup s = buildMatch(GameMode::Brawl, nullptr, 0, 1, 3);
+    for (int i = 0; i < s.count; ++i) s.loadout[i].bot = false;
+    MatchState m = createMatch(s);
+    CHECK(m.f[0].target >= 0 && m.f[0].target != 0);
+    const int first = m.f[0].target;
+    FrameInput in[kMaxFighters] = {};
+    in[0].buttons = BtnTarget;
+    step(m, s, in);
+    CHECK(m.f[0].target != first && m.f[0].manualTarget);
+}
+
+static void testBotFightsBack() {
+    std::puts("bot: greift einen passiven spieler an");
+    Loadout human{&bodies::brawler(), &glutkern(), {}, {}, nullptr, 0};
+    MatchSetup s = buildMatch(GameMode::Duel, &human, 1, 2, 11);
+    CHECK(s.loadout[1].bot);
+    MatchState m = createMatch(s);
+    for (int f = 0; f < 900 && m.winner == kNoWinner; ++f) step(m, s, none20);
+    CHECK(m.f[0].health < s.stats[0].maxHealth);
+}
+
+static void testBrawl20Bots() {
+    std::puts("brawl: 20 bots, respawn, k.o.s, determinismus, rollback, performance");
+    const MatchSetup s = buildMatch(GameMode::Brawl, nullptr, 0, 1, 2026);
+    CHECK(s.count == kMaxFighters);
+    MatchState a = createMatch(s), b = createMatch(s);
+    EventSink ev;
+    bool respawned = false;
+    MatchState snapshot{};
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int f = 0; f < 6000; ++f) {
+        if (f == 3000) snapshot = a;
+        ev.clear();
+        step(a, s, none20, &ev);
+        respawned |= saw(ev, ImpactKind::Respawn);
+    }
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    for (int f = 0; f < 6000; ++f) step(b, s, none20);
+    CHECK(hashState(a) == hashState(b));
+    MatchState r = snapshot;
+    for (int f = 3000; f < 6000; ++f) step(r, s, none20);
+    CHECK(hashState(r) == hashState(a));
+
+    int kos = 0;
+    for (int i = 0; i < s.count; ++i) kos += a.f[i].kos;
+    CHECK(kos > 0 && respawned);
+    std::printf("  20 Kaempfer: %.3f ms pro Frame, %d K.O.s in 100 s\n", ms / 6000.0, kos);
+    CHECK(ms / 6000.0 < 1.0); // weit unter dem 16,6-ms-Budget
+
+    // Zeitlimit beendet das Match
+    MatchState end = createMatch(s);
+    end.frame = rulesFor(GameMode::Brawl).timeLimitFrames - 2;
+    step(end, s, none20);
+    step(end, s, none20);
+    CHECK(end.winner != kNoWinner);
+}
+
+static void testSessionTeams() {
+    std::puts("rollback-session: 2v2, 2 menschen online + 2 bots");
+    Loadout humans[2] = {{&bodies::speedster(), &nullraum(), {}, {}, nullptr, 0},
+                         {&bodies::heavy(), &glutkern(), {}, {}, nullptr, 1}};
+    const MatchSetup s = buildMatch(GameMode::Teams, humans, 2, 1, 5);
+    std::vector<FrameInput> in[2];
+    uint32_t seed = 77;
+    for (int f = 0; f < 600; ++f) { in[0].push_back(randomInput(seed)); in[1].push_back(randomInput(seed)); }
+    MatchState ref = createMatch(s);
+    for (int f = 0; f < 600; ++f) { FrameInput i[kMaxFighters] = {in[0][f], in[1][f]}; step(ref, s, i); }
+
+    constexpr int kDelay = 5;
+    Session a(s), b(s);
+    for (int f = 0; f < 600; ++f) {
+        a.setInput(0, f, in[0][f]);
+        b.setInput(1, f, in[1][f]);
+        if (f >= kDelay) { a.setInput(1, f - kDelay, in[1][f - kDelay]); b.setInput(0, f - kDelay, in[0][f - kDelay]); }
+        a.advance();
+        b.advance();
+    }
+    for (int f = 600 - kDelay; f < 600; ++f) { a.setInput(1, f, in[1][f]); b.setInput(0, f, in[0][f]); }
+    a.applyRollback();
+    b.applyRollback();
+    CHECK(hashState(a.state()) == hashState(ref) && hashState(b.state()) == hashState(ref));
+}
+
 int main() {
     testBodiesBalanced();
     testDeterminismAndRollback();
@@ -617,6 +739,11 @@ int main() {
     testRealmHitsCompanions();
     testCompanionPacts();
     testRollbackSession();
+    testTeamsNoFriendlyFire();
+    testTargetSwitch();
+    testBotFightsBack();
+    testBrawl20Bots();
+    testSessionTeams();
     if (g_failed) { std::printf("%d check(s) failed\n", g_failed); return EXIT_FAILURE; }
     std::puts("all tests passed");
     return EXIT_SUCCESS;

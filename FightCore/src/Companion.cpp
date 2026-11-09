@@ -70,9 +70,9 @@ void startAction(MatchState& m, const MatchSetup& s, int owner, int slot, Assist
     c.actionFrame = 0;
     c.hasHit = false;
     c.link = link && (a.kind == AssistKind::Rush || a.kind == AssistKind::Pull || a.kind == AssistKind::Rise);
-    if (c.link) {
+    if (c.link && m.f[owner].target >= 0) {
         // Link-Attack: Begleiter taucht direkt am Gegner auf und schlägt sofort zu
-        const FighterState& o = m.f[1 - owner];
+        const FighterState& o = m.f[m.f[owner].target];
         Vec3 dir = normalizeXZ(o.pos - m.f[owner].pos, m.f[owner].facing);
         c.pos = o.pos - dir * Fx::ratio(8, 10);
         c.pos.y = Fx::ratio(6, 10);
@@ -96,7 +96,7 @@ const MoveDef& companionMove(const MatchSetup& s, int owner, int roster, int16_t
 }
 
 void buildRoster(MatchSetup& s) {
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < s.count; ++i) {
         int n = 0;
         s.assistRoster[i] = s.techRosterStart[i] = s.pactRoster[i] = -1;
         if (s.loadout[i].body->has(PassiveAssist)) {
@@ -118,8 +118,8 @@ void buildRoster(MatchSetup& s) {
     }
 }
 
-void initCompanions(MatchState& m, const MatchSetup& s) {
-    for (int i = 0; i < 2; ++i) {
+void initCompanions(MatchState& m, const MatchSetup& s, int i) {
+    {
         FighterState& f = m.f[i];
         const PactModifiers& pm = setupMods(s, i);
         const bool techComps = s.techRosterStart[i] >= 0;
@@ -162,7 +162,8 @@ void tryAssistCommand(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
 
 void tickCompanions(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
     FighterState& f = m.f[owner];
-    const FighterState& o = m.f[1 - owner];
+    const bool hasTarget = f.target >= 0;
+    const FighterState& o = m.f[hasTarget ? f.target : owner];
     for (int slot = 0; slot < kCompanionSlots; ++slot) {
         CompanionState& c = f.comp[slot];
         if (c.roster < 0) continue;
@@ -188,8 +189,9 @@ void tickCompanions(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
             continue;
         }
         if (c.cooldown > 0) --c.cooldown;
-        if (m.realm.clashTimer > 0) continue;
+        if (f.state == FState::Clash) continue;
         if (c.lock > 0) { --c.lock; continue; }
+        if (c.action >= 0 && !hasTarget) abortAction(c, d);
 
         if (c.action < 0) {
             c.facing = normalizeXZ(o.pos - c.pos, c.facing);
@@ -240,7 +242,6 @@ void tickCompanions(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
 
 void companionAttacks(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
     FighterState& f = m.f[owner];
-    const int target = 1 - owner;
     for (CompanionState& c : f.comp) {
         if (!c.onField() || c.action < 0 || c.hasHit || c.lock > 0) continue;
         const CompanionDef& d = companionDef(s, owner, c);
@@ -249,40 +250,48 @@ void companionAttacks(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
         if (c.actionFrame <= a.startup || c.actionFrame > a.startup + a.active) continue;
         Vec3 center = a.kind == AssistKind::Rise ? c.pos : c.pos + c.facing * Fx::ratio(6, 10);
         Fx radius = a.kind == AssistKind::Rise ? Fx::fromInt(1) : a.kind == AssistKind::Pull ? Fx::ratio(7, 10) : Fx::ratio(6, 10);
-        if (isInvulnerable(m, s, target) || !hitsFighter(m, target, center, radius)) continue;
+        int target = -1;
+        for (int j = 0; j < m.count && target < 0; ++j)
+            if (isEnemy(m, owner, j) && !isInvulnerable(m, s, j) && hitsFighter(m, j, center, radius)) target = j;
+        if (target < 0) continue;
         c.hasHit = true;
         PendingHit h{true, &d.moves[a.move], -1, false, center, c.facing};
         if (a.kind == AssistKind::Pull) h.dir = normalizeXZ(f.pos - m.f[target].pos, c.facing); // zum Spieler ziehen
         h.companion = c.roster;
         h.link = c.link;
         h.source = c.pos;
+        h.target = static_cast<int8_t>(target);
         applyHit(m, s, owner, h, ev);
     }
 }
 
 bool meleeHitsCompanion(MatchState& m, const MatchSetup& s, int atk, const MoveDef& mv, Vec3 center, Fx radius, Ev ev) {
-    const int def = 1 - atk;
-    for (int slot = 0; slot < kCompanionSlots; ++slot) {
-        CompanionState& c = m.f[def].comp[slot];
-        if (!c.onField() || !overlap(center, radius, c.pos, Fx::ratio(5, 10))) continue;
-        m.f[atk].hitstop = 4;
-        emit(ev, m, ImpactKind::Hit, atk, mv.hit.impact, c.pos, m.f[atk].facing, mv.hit.knockback, 4);
-        damageCompanion(m, s, def, slot, mv.hit.damage, mv.category, ev);
-        return true;
+    for (int def = 0; def < m.count; ++def) {
+        if (!isEnemy(m, atk, def)) continue;
+        for (int slot = 0; slot < kCompanionSlots; ++slot) {
+            CompanionState& c = m.f[def].comp[slot];
+            if (!c.onField() || !overlap(center, radius, c.pos, Fx::ratio(5, 10))) continue;
+            m.f[atk].hitstop = 4;
+            emit(ev, m, ImpactKind::Hit, atk, mv.hit.impact, c.pos, m.f[atk].facing, mv.hit.knockback, 4);
+            damageCompanion(m, s, def, slot, mv.hit.damage, mv.category, ev);
+            return true;
+        }
     }
     return false;
 }
 
 bool projectileHitsCompanion(MatchState& m, const MatchSetup& s, Projectile& p, const MoveDef& mv, Ev ev) {
-    const int def = 1 - p.owner;
-    for (int slot = 0; slot < kCompanionSlots; ++slot) {
-        CompanionState& c = m.f[def].comp[slot];
-        if (!c.onField() || !overlap(p.pos, p.radius, c.pos, Fx::ratio(5, 10))) continue;
-        const bool shielding = c.action >= 0 && companionDef(s, def, c).actions[c.action].kind == AssistKind::Shield;
-        if (shielding && m.f[def].bond < kBondMax) ++m.f[def].bond;
-        emit(ev, m, ImpactKind::ProjectileBurst, p.owner, mv.hit.impact, c.pos, {}, Fx{}, 4);
-        damageCompanion(m, s, def, slot, mv.hit.damage, mv.category, ev);
-        return true;
+    for (int def = 0; def < m.count; ++def) {
+        if (!isEnemy(m, p.owner, def)) continue;
+        for (int slot = 0; slot < kCompanionSlots; ++slot) {
+            CompanionState& c = m.f[def].comp[slot];
+            if (!c.onField() || !overlap(p.pos, p.radius, c.pos, Fx::ratio(5, 10))) continue;
+            const bool shielding = c.action >= 0 && companionDef(s, def, c).actions[c.action].kind == AssistKind::Shield;
+            if (shielding && m.f[def].bond < kBondMax) ++m.f[def].bond;
+            emit(ev, m, ImpactKind::ProjectileBurst, p.owner, mv.hit.impact, c.pos, {}, Fx{}, 4);
+            damageCompanion(m, s, def, slot, mv.hit.damage, mv.category, ev);
+            return true;
+        }
     }
     return false;
 }
@@ -333,20 +342,24 @@ void leash(MatchState& m, const MatchSetup& s, int owner) {
         if (c.onField() && c.action >= 0) abortAction(c, companionDef(s, owner, c));
 }
 
-void realmHitsCompanions(MatchState& m, const MatchSetup& s, int target, RealmClass cls, int ownerBond, Ev ev) {
-    const RealmState& r = m.realm;
-    const int elapsed = kRealmFrames - r.timer;
+void realmHitsCompanions(MatchState& m, const MatchSetup& s, int owner, RealmClass cls, int ownerBond, Ev ev) {
+    const int elapsed = kRealmFrames - m.f[owner].realm.timer;
     const bool bond3 = ownerBond >= 3;
-    for (int slot = 0; slot < kCompanionSlots; ++slot) {
-        CompanionState& c = m.f[target].comp[slot];
-        if (!c.onField()) continue;
-        if (r.open && distXZ(m.f[r.owner].pos, c.pos) > Fx::fromInt(kOpenRealmRadius)) continue;
-        if (cls == RealmClass::Damage && elapsed % 30 == 0) {
-            emit(ev, m, ImpactKind::SureHit, r.owner, ImpactClass::Medium, c.pos, {}, Fx{}, 4);
-            damageCompanion(m, s, target, slot, bond3 ? 25 : 20, MoveCategory::Realm, ev);
-        } else if (cls == RealmClass::Lock && elapsed % 200 == 0) {
-            abortAction(c, companionDef(s, target, c));
-            c.lock = static_cast<int16_t>(bond3 ? 120 : 90);
+    const bool damageTick = cls == RealmClass::Damage && elapsed % 30 == 0;
+    const bool lockTick = cls == RealmClass::Lock && elapsed % 200 == 0;
+    if (!damageTick && !lockTick) return;
+    for (int target = 0; target < m.count; ++target) {
+        if (!isEnemy(m, owner, target)) continue;
+        for (int slot = 0; slot < kCompanionSlots; ++slot) {
+            CompanionState& c = m.f[target].comp[slot];
+            if (!c.onField() || !inRealmArea(m, owner, c.pos)) continue;
+            if (damageTick) {
+                emit(ev, m, ImpactKind::SureHit, owner, ImpactClass::Medium, c.pos, {}, Fx{}, 4);
+                damageCompanion(m, s, target, slot, bond3 ? 25 : 20, MoveCategory::Realm, ev);
+            } else {
+                abortAction(c, companionDef(s, target, c));
+                c.lock = static_cast<int16_t>(bond3 ? 120 : 90);
+            }
         }
     }
 }

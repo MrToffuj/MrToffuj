@@ -50,7 +50,8 @@ struct TechContext {
     EventSink* events;
 
     FighterState& me() const;
-    FighterState& opp() const;
+    FighterState& opp() const; // aktuelles Lock-on-Ziel (ohne Ziel: man selbst)
+    bool hasTarget() const;
     const BodyStats& stats() const;
     bool realmIsMine() const;
     Vec3 localToWorld(Vec3 offset) const;
@@ -76,7 +77,7 @@ public:
     virtual void onRealmOpen(const TechContext&) const {}
     virtual void onRealmTick(const TechContext&) const {}
     // Treffer gelandet (Melee oder Projektil). moveIndex >= 0 nur bei Technik-Moves.
-    virtual void onHitLanded(const TechContext&, int16_t /*moveIndex*/, bool /*projectile*/) const {}
+    virtual void onHitLanded(const TechContext&, int16_t /*moveIndex*/, bool /*projectile*/, int /*victim*/) const {}
     // Core Rules wie ein Auto-Block-Feld: true = Treffer wird neutralisiert.
     virtual bool nullifiesIncoming(const TechContext&, const MoveDef&, bool /*projectile*/) const { return false; }
     virtual void onParry(const TechContext&, const MoveDef&) const {}

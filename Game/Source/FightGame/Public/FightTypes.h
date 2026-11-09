@@ -7,6 +7,14 @@
 #include "FightTypes.generated.h"
 
 UENUM(BlueprintType)
+enum class EFightMode : uint8
+{
+	Duel UMETA(DisplayName = "1v1"),
+	Teams UMETA(DisplayName = "2v2"),
+	Brawl UMETA(DisplayName = "Brawl (bis 20)")
+};
+
+UENUM(BlueprintType)
 enum class EFightBody : uint8
 {
 	Heavy, Speedster, Caster, Brawler, Technician, Summoner, Nullborn
@@ -33,7 +41,8 @@ enum class EFightImpactKind : uint8
 	ProjectileBurst, TechniqueFx, Burst,
 	RealmOpen, RealmClash, RealmEnd,
 	Ignite, Burnout,
-	CompanionSummon, CompanionCall, CompanionDown, CompanionRevive, CompanionGone
+	CompanionSummon, CompanionCall, CompanionDown, CompanionRevive, CompanionGone,
+	KO, Respawn
 };
 
 // Ein Event aus der Simulation für die Präsentation (Zerstörung, VFX, Sound, Kamera).

@@ -10,6 +10,10 @@
 namespace fc {
 
 constexpr int16_t kRealmMeterMax = 1000;
+constexpr int kMaxFighters = 20;
+constexpr int kMaxProjectiles = 64;
+constexpr uint8_t kNoWinner = 255;
+constexpr uint8_t kDraw = 254;
 
 enum class FState : uint8_t {
     Idle, Walk, Dash, Dodge, Air, Attack, Hitstun, Blockstun, Knockdown, Guard,
@@ -36,6 +40,18 @@ struct CompanionState {
     Vec3 facing{Fx{}, Fx{}, Fx::fromInt(1)};
 
     bool onField() const { return roster >= 0 && down == 0; }
+};
+
+// Realm (Domain-artige Ultimate). Jeder Kämpfer kann einen eigenen haben; Wirkung nur im Radius.
+struct RealmState {
+    int16_t timer = 0;      // > 0: aktiv
+    bool open = false;      // offener Realm (Pakt-Unlock): folgt dem Besitzer, kleinerer Radius
+    Vec3 center{};          // geschlossener Realm: fester Mittelpunkt
+    int8_t clashWith = -1;  // Realm-Clash gegen diesen Kämpfer
+    int16_t clashTimer = 0;
+    int16_t clashCount = 0;
+
+    bool active() const { return timer > 0 && clashTimer == 0; }
 };
 
 struct FighterState {
@@ -69,6 +85,16 @@ struct FighterState {
     std::array<CompanionState, 3> comp{};
     uint8_t lostMask = 0;        // Roster-Einträge, die für die Runde weg sind
     int16_t bond = 0;            // erfolgreiche Assists (Bond-Leiste)
+    // Modus / Team / Ziel
+    uint8_t team = 0;
+    int8_t target = -1;          // Lock-on-Ziel
+    bool manualTarget = false;   // Ziel per Taste gewählt -> kein Auto-Wechsel
+    bool out = false;            // K.O.
+    int16_t respawn = 0;         // Brawl: Frames bis Respawn
+    int16_t kos = 0;
+    int16_t deaths = 0;
+    int8_t lastHitBy = -1;
+    RealmState realm{};
     std::array<int32_t, 8> tech{}; // Technik-Zustand
 };
 
@@ -88,22 +114,13 @@ struct WallState {
     bool broken = false;
 };
 
-struct RealmState {
-    int8_t owner = -1;
-    int8_t challenger = -1;
-    bool open = false;     // offener Realm (Pakt-Unlock)
-    int16_t timer = 0;
-    int16_t clashTimer = 0;
-    std::array<int16_t, 2> clashCount{};
-};
-
 struct MatchState {
     int32_t frame = 0;
-    std::array<FighterState, 2> f{};
-    std::array<Projectile, 16> proj{};
+    uint8_t count = 2; // aktive Kämpfer
+    uint8_t winner = kNoWinner; // Team-ID des Siegers, kDraw, kNoWinner = läuft
+    std::array<FighterState, kMaxFighters> f{};
+    std::array<Projectile, kMaxProjectiles> proj{};
     std::array<WallState, 4> walls{};
-    RealmState realm{};
-    uint8_t winner = 255; // 255 läuft, 0/1 Sieger, 2 Unentschieden
 };
 
 static_assert(std::is_trivially_copyable_v<MatchState>, "MatchState muss kopierbar sein (Rollback)");

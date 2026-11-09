@@ -17,6 +17,7 @@ namespace fc {
 //  Mod + Guard (halten)    -> Rückfluss (Heilung, steht still)
 //  Mod + Dash              -> Verstärkung an/aus
 //  Assist (R3)             -> Begleiter rufen: neutral Angriff, vor Druck, seitlich Anti-Air, zurück Schutz
+//  Target (L3)             -> Lock-on auf den nächsten Gegner wechseln (2v2 / Brawl)
 enum Button : uint16_t {
     BtnLight = 1 << 0,
     BtnHeavy = 1 << 1,
@@ -27,6 +28,7 @@ enum Button : uint16_t {
     BtnMod   = 1 << 6,
     BtnUlt   = 1 << 7,
     BtnAssist = 1 << 8,
+    BtnTarget = 1 << 9,
 };
 
 // Richtung im Numpad-Format, so wie der Stick aus der Kamera HINTER dem Kämpfer aussieht:

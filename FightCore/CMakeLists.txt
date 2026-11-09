@@ -12,6 +12,8 @@ add_library(fightcore
     src/Companion.cpp
     src/Companions.cpp
     src/Session.cpp
+    src/Bot.cpp
+    src/Lobby.cpp
     techniques/Nullraum.cpp
     techniques/Glutkern.cpp
     techniques/Schattenmenagerie.cpp

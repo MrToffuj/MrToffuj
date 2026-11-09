@@ -14,7 +14,7 @@
 namespace fc::techniques {
 namespace {
 
-enum : int { kHeatStacks = 0, kHeatDecay = 1, kMantleTimer = 2 };
+enum : int { kHeatStacks = 0, kHeatDecay = 1, kMantleTimer = 2, kBurnTarget = 3 };
 constexpr int32_t kMaxStacks = 5;
 
 class GlutkernLogic final : public TechniqueLogic {
@@ -54,16 +54,20 @@ public:
         int32_t& stacks = me.tech[kHeatStacks];
         if (stacks <= 0) return;
         // Brennen: 1 Schaden pro Stack alle 20 Frames
+        const int victim = me.tech[kBurnTarget];
+        if (c.m.f[victim].out) { stacks = 0; return; }
         if (c.m.frame % 20 == 0) {
-            c.damage(1 - c.self, static_cast<int16_t>(stacks));
-            c.emit(ImpactKind::Ignite, c.opp().pos, {}, Fx::fromInt(stacks), ImpactClass::Light, 12);
+            c.damage(victim, static_cast<int16_t>(stacks));
+            c.emit(ImpactKind::Ignite, c.m.f[victim].pos, {}, Fx::fromInt(stacks), ImpactClass::Light, 12);
         }
         if (++me.tech[kHeatDecay] >= 180) { me.tech[kHeatDecay] = 0; --stacks; }
     }
 
-    void onHitLanded(const TechContext& c, int16_t move, bool) const override {
+    void onHitLanded(const TechContext& c, int16_t move, bool, int victim) const override {
         if (move < 0) return; // nur Technik-Treffer
         int32_t& stacks = c.me().tech[kHeatStacks];
+        if (c.me().tech[kBurnTarget] != victim) stacks = 0; // ein Opfer brennt zur Zeit
+        c.me().tech[kBurnTarget] = victim;
         stacks += move == kStarfall ? 3 : 1;
         if (stacks > kMaxStacks) stacks = kMaxStacks;
         c.me().tech[kHeatDecay] = 0;
