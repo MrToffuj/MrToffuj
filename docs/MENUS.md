@@ -1,5 +1,7 @@
 # Menüs (Platzhalter)
 
+![Platzhalter-Menüs](preview/menus_placeholder.png)
+
 Weiß, schwarze Schrift, keine Assets. Alles ist Slate in C++ (`Game/Source/FightGame/Public/FightMenu.h`).
 Damit laufen die Menüs ohne Editor-Arbeit und vom ersten Frame an mit Controller. Das echte Design kommt später
 und ersetzt nur das Aussehen, nicht die Seiten.
