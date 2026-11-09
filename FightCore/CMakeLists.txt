@@ -19,6 +19,7 @@ add_library(fightcore
     src/Cosmetics.cpp
     src/Json.cpp
     src/Registry.cpp
+    src/Net.cpp
     techniques/Boundless.cpp
     techniques/CalamityFlames.cpp
     techniques/ShadowPuppets.cpp

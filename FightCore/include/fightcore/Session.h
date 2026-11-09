@@ -34,6 +34,15 @@ public:
     // State at the start of a past frame, or nullptr if it fell out of the history.
     const MatchState* stateAt(int32_t frame) const;
 
+    // Last frame up to which every input of this player is known (-1 = none yet).
+    int32_t confirmedFrame(int player) const;
+    // Last frame for which every human input is known, i.e. nothing before it can change anymore.
+    int32_t confirmedAll() const;
+    bool inputAt(int32_t frame, int player, FrameInput& out) const;
+    // A bot plays this slot from `frame` on (player left). All peers must call this with the same frame.
+    void takeOverByBot(int player, int32_t frame);
+    bool isBotControlled(int player, int32_t frame) const;
+
 private:
     struct Slot {
         int32_t frame = -1;
@@ -51,7 +60,11 @@ private:
     MatchSetup setup_;
     MatchState state_;
     std::array<Slot, kHistory> history_{};
+    void bumpConfirmed(int player);
+
     int32_t rollbackFrom_ = INT_MAX;
+    std::array<int32_t, kMaxFighters> confirmedUpTo_{};
+    std::array<int32_t, kMaxFighters> botFrom_{};
     int rollbacks_ = 0;
     int lastDepth_ = 0;
 };

@@ -1,5 +1,7 @@
 // Plain test runner, no framework needed.
+#include <algorithm>
 #include <chrono>
+#include <memory>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
@@ -11,6 +13,8 @@
 
 #include "fightcore/Json.h"
 #include "fightcore/Registry.h"
+#include "FakeNetwork.h"
+#include "fightcore/Net.h"
 #include "fightcore/Session.h"
 #include "fightcore/Simulation.h"
 
@@ -1172,6 +1176,268 @@ static void testJsonNumbers() {
     CHECK(!json::parse("{\"a\": 1e5}", v));
 }
 
+// ---- peer to peer
+
+struct P2PMatch {
+    FakeNetwork net;
+    std::vector<std::unique_ptr<FakeTransport>> transports;
+    std::vector<net::LobbyConfig> configs;
+    std::vector<MatchSetup> setups;
+    std::vector<std::unique_ptr<net::PeerSession>> peers;
+    std::vector<std::vector<FrameInput>> log; // per slot, per frame
+    std::vector<bool> active;
+    std::vector<uint8_t> localPeers;
+    uint8_t round = 0;
+    int delay = 2;
+
+    P2PMatch(int peerCount, int playersPerPeer, GameMode mode, const ModeRules& rules, int latency, int jitter, int loss) {
+        net.latency = latency;
+        net.jitter = jitter;
+        net.lossPct = loss;
+        net.cut.assign(static_cast<size_t>(peerCount), false);
+        for (int p = 0; p < peerCount; ++p) transports.push_back(std::make_unique<FakeTransport>(net, static_cast<uint8_t>(p)));
+        auto requests = [&](int p) {
+            std::vector<net::PlayerRequest> r;
+            for (int k = 0; k < playersPerPeer; ++k) {
+                net::PlayerRequest req;
+                req.body = k % 2 ? "Caster" : "Brawler";
+                req.technique = (p + k) % 2 ? "boundless" : "calamity_flames";
+                req.team = static_cast<uint8_t>(p % 2);
+                r.push_back(req);
+            }
+            return r;
+        };
+        // handshake over the same lossy network
+        net::LobbyHost host(*transports[0], requests(0));
+        std::vector<std::unique_ptr<net::LobbyClient>> clients;
+        for (int p = 1; p < peerCount; ++p) clients.push_back(std::make_unique<net::LobbyClient>(*transports[static_cast<size_t>(p)], requests(p)));
+        net::LobbyConfig hostConfig;
+        bool started = false;
+        for (int t = 0; t < 600; ++t) {
+            bool all = true;
+            for (auto& c : clients) all &= c->poll();
+            host.poll();
+            if (!started && host.peerCount() == peerCount) {
+                hostConfig = host.start(mode, rules, 1, 99, static_cast<uint8_t>(delay));
+                started = true;
+            }
+            ++net.now;
+            if (started && all) break;
+        }
+        configs.push_back(hostConfig);
+        for (auto& c : clients) configs.push_back(c->config());
+        for (int p = 0; p < peerCount; ++p) {
+            MatchSetup s;
+            std::string err;
+            const bool built = net::buildSetup(configs[static_cast<size_t>(p)], s, &err);
+            if (!built) {
+                // nothing below can run on a broken setup
+                std::printf("  FAIL peer %d never got a usable lobby: %s\n", p, err.c_str());
+                std::exit(1);
+            }
+            setups.push_back(s);
+        }
+        for (int p = 0; p < peerCount; ++p) {
+            localPeers.push_back(p == 0 ? 0 : clients[static_cast<size_t>(p - 1)]->localPeer());
+            peers.push_back(std::make_unique<net::PeerSession>(configs[static_cast<size_t>(p)], setups[static_cast<size_t>(p)],
+                                                                localPeers.back(), *transports[static_cast<size_t>(p)]));
+        }
+        log.assign(static_cast<size_t>(setups[0].count), std::vector<FrameInput>(static_cast<size_t>(delay)));
+        active.assign(static_cast<size_t>(peerCount), true);
+        net.now = 0;
+        net.inFlight.clear();
+    }
+
+    // One peer moves on to the next round. Peers still in the old one stop counting for the log.
+    void rematch(size_t p, uint8_t newRound) {
+        if (newRound != round) {
+            round = newRound;
+            log.assign(log.size(), std::vector<FrameInput>(static_cast<size_t>(delay)));
+        }
+        peers[p] = std::make_unique<net::PeerSession>(configs[p], setups[p], localPeers[p], *transports[p], newRound);
+    }
+
+    void tick(bool randomInputs, uint32_t salt) {
+        for (size_t p = 0; p < peers.size(); ++p) {
+            if (!active[p]) continue;
+            net::PeerSession& ps = *peers[p];
+            const int32_t before = ps.frame();
+            std::vector<FrameInput> chosen;
+            for (int k = 0; k < ps.localPlayerCount(); ++k) {
+                uint32_t seed = static_cast<uint32_t>(before) * 2654435761u ^ (static_cast<uint32_t>(p * 31 + k) + salt);
+                FrameInput in = randomInputs ? randomInput(seed) : FrameInput{};
+                ps.setLocalInput(k, in);
+                chosen.push_back(in);
+            }
+            ps.tick();
+            if (ps.frame() > before && ps.round() == round)
+                for (int k = 0; k < ps.localPlayerCount(); ++k) {
+                    auto& slotLog = log[static_cast<size_t>(ps.localSlots()[static_cast<size_t>(k)])];
+                    const size_t f = static_cast<size_t>(before + delay);
+                    if (slotLog.size() <= f) slotLog.resize(f + 1);
+                    slotLog[f] = chosen[static_cast<size_t>(k)];
+                }
+        }
+        ++net.now;
+    }
+
+    // A frame every active peer has confirmed and still keeps in its history
+    int32_t commonFrame() const {
+        int32_t f = INT32_MAX, newest = 0;
+        for (size_t p = 0; p < peers.size(); ++p) {
+            if (!active[p]) continue;
+            f = std::min(f, peers[p]->session().confirmedAll());
+            newest = std::max(newest, peers[p]->frame());
+        }
+        return std::max(f, newest - Session::kHistory + 2);
+    }
+
+    bool agree(int32_t f) const {
+        uint64_t h = 0;
+        bool first = true;
+        for (size_t p = 0; p < peers.size(); ++p) {
+            if (!active[p]) continue;
+            const MatchState* st = peers[p]->session().stateAt(f);
+            if (!st) return false;
+            if (first) { h = hashState(*st); first = false; }
+            else if (hashState(*st) != h) return false;
+        }
+        return true;
+    }
+
+    bool matchesReference(int32_t f) const {
+        MatchState ref = createMatch(setups[0]);
+        std::vector<FrameInput> in(static_cast<size_t>(kMaxFighters));
+        for (int32_t g = 0; g < f; ++g) {
+            for (size_t slot = 0; slot < log.size(); ++slot)
+                in[slot] = static_cast<size_t>(g) < log[slot].size() ? log[slot][static_cast<size_t>(g)] : FrameInput{};
+            step(ref, setups[0], in.data());
+        }
+        return hashState(ref) == hashState(*peers[0]->session().stateAt(f));
+    }
+};
+
+static void runAndCheck(P2PMatch& m, int ticks, const char* label) {
+    for (int t = 0; t < ticks; ++t) m.tick(true, 7);
+    for (int t = 0; t < 90; ++t) m.tick(false, 7); // let everything arrive
+    const int32_t f = m.commonFrame();
+    bool desync = false;
+    for (auto& p : m.peers) desync |= p->desynced();
+    const double seconds = static_cast<double>(m.net.now) / 60.0;
+    std::printf("  %s: frame %d, rollbacks %d, %.1f KB/s per peer\n", label, m.peers[0]->frame(), m.peers[0]->session().rollbackCount(),
+                static_cast<double>(m.net.bytes) / static_cast<double>(m.peers.size()) / seconds / 1024.0);
+    CHECK(!desync);
+    CHECK(f > ticks / 2);
+    CHECK(m.agree(f));
+    CHECK(m.matchesReference(f));
+}
+
+static void testP2PDuel() {
+    std::puts("p2p 1v1: 4 frames lag, jitter, 10% loss");
+    P2PMatch m(2, 1, GameMode::Duel, rulesFor(GameMode::Duel), 4, 3, 10);
+    CHECK(m.setups[0].count == 2 && !m.setups[0].loadout[1].bot);
+    CHECK(hashState(createMatch(m.setups[0])) == hashState(createMatch(m.setups[1])));
+    runAndCheck(m, 900, "1v1");
+}
+
+static void testP2PTeamsSplitscreen() {
+    std::puts("p2p 2v2: two consoles with two players each");
+    P2PMatch m(2, 2, GameMode::Teams, rulesFor(GameMode::Teams), 6, 2, 5);
+    int humans = 0;
+    for (int i = 0; i < m.setups[0].count; ++i) humans += !m.setups[0].loadout[i].bot;
+    CHECK(humans == 4);
+    runAndCheck(m, 900, "2v2");
+}
+
+static void testP2PBrawl() {
+    std::puts("p2p brawl: 6 peers + 14 bots, lag, jitter, 8% loss");
+    P2PMatch m(6, 1, GameMode::Brawl, rulesFor(GameMode::Brawl), 5, 4, 8);
+    CHECK(m.setups[0].count == kMaxFighters);
+    runAndCheck(m, 600, "brawl");
+}
+
+static void testP2PDisconnect() {
+    std::puts("p2p: a player drops, a bot takes over, the rest keep playing in sync");
+    P2PMatch m(3, 1, GameMode::Brawl, rulesFor(GameMode::Brawl), 3, 2, 5);
+    for (int t = 0; t < 300; ++t) m.tick(true, 3);
+    m.net.cut[2] = true;
+    m.active[2] = false;
+    for (int t = 0; t < 600; ++t) m.tick(true, 3);
+    for (int t = 0; t < 90; ++t) m.tick(false, 3);
+    CHECK(m.peers[0]->peerDropped(2) && m.peers[1]->peerDropped(2));
+    const int slot = m.peers[2]->localSlots()[0];
+    CHECK(m.peers[0]->session().isBotControlled(slot, m.peers[0]->frame()));
+    CHECK(!m.peers[0]->desynced() && !m.peers[1]->desynced());
+    CHECK(m.agree(m.commonFrame()));
+    CHECK(m.peers[0]->frame() > 700);
+}
+
+static void testP2PDesyncDetected() {
+    std::puts("p2p: a peer with a different setup gets caught");
+    P2PMatch m(2, 1, GameMode::Duel, rulesFor(GameMode::Duel), 2, 0, 0);
+    // tamper with what peer 1 thinks the match is
+    m.setups[1].loadout[0].body = &bodies::heavy();
+    m.setups[1].finalize();
+    m.peers[1] = std::make_unique<net::PeerSession>(m.configs[1], m.setups[1], 1, *m.transports[1]);
+    for (int t = 0; t < 400; ++t) m.tick(true, 1);
+    CHECK(m.peers[0]->desynced() || m.peers[1]->desynced());
+}
+
+static void testP2PTimeSync() {
+    std::puts("p2p: a peer that starts late gets caught up");
+    P2PMatch m(2, 1, GameMode::Duel, rulesFor(GameMode::Duel), 3, 1, 0);
+    m.active[1] = false;
+    for (int t = 0; t < 12; ++t) m.tick(true, 5);
+    m.active[1] = true;
+    for (int t = 0; t < 600; ++t) m.tick(true, 5);
+    const int gap = std::abs(m.peers[0]->frame() - m.peers[1]->frame());
+    CHECK(gap <= 4);
+    CHECK(m.agree(m.commonFrame()));
+}
+
+static void testLobbyEncoding() {
+    std::puts("p2p lobby: config round trip, version and mod checks");
+    ModeRules r = rulesFor(GameMode::Custom);
+    r.objective = Objective::CaptureTheFlag;
+    r.teamCount = 4;
+    r.cursedObjectSlots = 3;
+    Loadout human{&bodies::summoner(), &shadowPuppets(), {}, {}, &companions::stoneWarden(), 2};
+    human.cursed[0] = cursed::find("lucky_ball");
+    const MatchSetup s = buildMatch(GameMode::Custom, r, &human, 1, 2, 77);
+    std::vector<uint8_t> owners(1, 0);
+    net::LobbyConfig cfg = net::describe(s, owners, 1, 77, 3);
+    net::LobbyConfig back;
+    CHECK(net::decode(net::encode(cfg), 0, back));
+    MatchSetup rebuilt;
+    CHECK(net::buildSetup(back, rebuilt));
+    CHECK(hashState(createMatch(rebuilt)) == hashState(createMatch(s)));
+    CHECK(rebuilt.items[0][Effect::CritChancePct] == 6 && rebuilt.loadout[0].assist == &companions::stoneWarden());
+    back.contentHash ^= 1;
+    std::string err;
+    CHECK(!net::buildSetup(back, rebuilt, &err) && !err.empty());
+    back.contentHash ^= 1;
+    back.protocol = 999;
+    CHECK(!net::buildSetup(back, rebuilt, &err));
+}
+
+static void testP2PRematch() {
+    std::puts("p2p: rematch in the same lobby, peers restart a few ticks apart");
+    P2PMatch m(2, 1, GameMode::Duel, rulesFor(GameMode::Duel), 3, 2, 5);
+    for (int t = 0; t < 200; ++t) m.tick(true, 11);
+    m.rematch(0, 1);
+    for (int t = 0; t < 9; ++t) m.tick(true, 11); // peer 1 still sends round 0 packets, peer 0 must ignore them
+    m.rematch(1, 1);
+    for (int t = 0; t < 400; ++t) m.tick(true, 12);
+    for (int t = 0; t < 90; ++t) m.tick(false, 12);
+    const int32_t f = m.commonFrame();
+    CHECK(f > 300);
+    CHECK(m.agree(f));
+    CHECK(m.matchesReference(f));
+    CHECK(!m.peers[0]->desynced() && !m.peers[1]->desynced());
+    const MatchState* settled = m.peers[0]->confirmedState();
+    CHECK(settled && settled->frame <= m.peers[0]->frame() && settled->frame > 300);
+}
+
 int main() {
     testBodiesBalanced();
     testDeterminismAndRollback();
@@ -1225,6 +1491,14 @@ int main() {
     testOutfits();
     testJsonNumbers();
     testMods();
+    testLobbyEncoding();
+    testP2PDuel();
+    testP2PTeamsSplitscreen();
+    testP2PBrawl();
+    testP2PDisconnect();
+    testP2PDesyncDetected();
+    testP2PTimeSync();
+    testP2PRematch();
     if (g_failed) { std::printf("%d check(s) failed\n", g_failed); return EXIT_FAILURE; }
     std::puts("all tests passed");
     return EXIT_SUCCESS;
