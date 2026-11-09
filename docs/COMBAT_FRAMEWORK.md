@@ -5,57 +5,43 @@ Grundlage, auf der **jeder** Charakter aufbaut. Code: [`FightCore/`](../FightCor
 ## Prinzip
 
 ```
-Charakter = CharacterDef (Daten)  +  Technique (Logik, stateless)
+Build = Body (Stats + Passiv)  +  Technik (Template)  +  optional Pakt
 ```
 
-- **CharacterDef**: Lebenspunkte, Laufgeschwindigkeit, Hurtboxen, Moves (Frame-Daten), Kommandos.
-- **Technique**: Die Fluch-Technik-artige Spezialfähigkeit. Hat nur `const`-Methoden. Zustand liegt in
-  `FighterState::tech[8]` → automatisch rollback-fähig, ohne dass der Charakter-Designer an Netcode denken muss.
+Design-Inhalte stehen in [GDD_KAMPFSYSTEM.md](GDD_KAMPFSYSTEM.md). Dieses Doc beschreibt die Technik dahinter.
 
-Neuer Charakter = neue `.cpp` in `FightCore/characters/` (Vorlage: `Kael.cpp`).
-
-## Ressource: Essenz
-
-| | |
+| Datei | Inhalt |
 |---|---|
-| Max | 1000 |
-| Gewinn | Treffen, getroffen werden, (halb) blocken |
-| Kosten | Techniken (z. B. 100–300), Ultimate/Realm = volle Leiste |
+| `include/fightcore/Body.h`, `src/Body.cpp` | 6 Bodies + Nullgeboren, Stat-Ableitung aus 10 Punkten |
+| `include/fightcore/Technique.h` | Technik-Template + `TechniqueLogic`-Hooks |
+| `include/fightcore/Pact.h`, `src/Pact.cpp` | Pakt-Bewertung (versteckter Wert) |
+| `src/Simulation.cpp` | Basis-Moves, Inputs, Ressourcen, Treffer, Realm, Clash |
+| `techniques/*.cpp` | Eine Datei pro Technik (Vorlage: `Nullraum.cpp`) |
 
-## Move-Kategorien & Cancels
+### Neue Technik bauen
 
-`Normal → Special → Technique → Ultimate`. Jeder Move hat eine `cancelMask`, die festlegt, in welche
-Kategorien er nach Treffer/Block gecancelt werden darf. Combos entstehen so rein datengetrieben.
+1. `TechniqueDef` füllen: 3 Skills (`move`, `ceCost`, `cooldown`), `apexMove`, `apexType`, `realmClass`.
+2. `TechniqueLogic` ableiten, nur die Hooks überschreiben, die gebraucht werden:
+   `onMoveEvent`, `onTick`, `onRealmOpen/Tick`, `onHitLanded`, `nullifiesIncoming`, `onParry`,
+   `damageDealtPct`, `damageTakenPct`.
+3. Zustand **nur** in `FighterState::tech[8]` speichern → automatisch rollback-fähig.
 
-## Steuerung (Controller-first, handheld-freundlich)
+### Move-IDs
 
-| Taste | Funktion |
-|---|---|
-| Light / Heavy | Normals |
-| Special | Technik (Richtung + Special = andere Technik, **keine Viertelkreise nötig**) |
-| Ultimate | Realm öffnen (volle Essenz) |
-| Guard | Blocken (halten) |
-| Jump / Dash | Bewegung (Dash in 4 Richtungen inkl. Sidestep) |
-
-Richtungen sind relativ zum Gegner (Numpad): 6 vor, 4 zurück, 8/2 Sidestep.
-Input-Buffer: 8 Frames, jeder Tastendruck wird nur einmal verbraucht.
-
-## Realm (domain-artige Ultimates)
-
-- Öffnet sich bei `eventFrame` eines Ultimate-Moves, hält 10 s.
-- Technik bekommt `onRealmOpen` und kann über `realmIsMine()` in `onTick` / `damagePercent` Buffs geben.
-- Geplant: **Realm-Clash** (beide öffnen gleichzeitig → Input-Duell), Realm-Gegenmaßnahmen pro Charakter.
+`< 100` = Basis-Move (für alle gleich), `>= 100` = Technik-Move (`Index + 100`).
 
 ## Frame-Loop (60 Hz, fix)
 
-1. Inputs in Buffer
-2. Hitstop (eingefrorene Kämpfer überspringen)
-3. Zustandsautomat pro Kämpfer (Idle/Walk/Dash/Air/Attack/Hitstun/Blockstun/Knockdown/Guard)
+1. Inputs in Buffer, Hitstop
+2. Ressourcen: Essenz-Regen/-Verbrauch, Burnout, Cooldowns, Pakt-Timer
+3. Zustandsautomat pro Kämpfer
 4. Physik: Gravitation, Boden, **Wände (zerstörbar)**, Auseinanderschieben
-5. `Technique::onTick`
-6. Treffer beider Seiten sammeln → dann anwenden (echte Trades)
+5. `TechniqueLogic::onTick`
+6. Treffer beider Seiten sammeln → dann anwenden (echte Trades). Reihenfolge: Core-Rule-Block →
+   Block/Parry → Schadensmodifikatoren → Nullfunke → Super Armor → Hitstun
 7. Projektile
-8. Realm-Timer, Siegbedingung
+8. Realm: Clash auflösen, Sure-Hit-Effekte, Timer
+9. Siegbedingung
 
 ## Regeln für Determinismus (Rollback)
 
@@ -70,5 +56,6 @@ Input-Buffer: 8 Frames, jeder Tastendruck wird nur einmal verbraucht.
 cd FightCore && cmake -S . -B build && cmake --build build && ./build/fightcore_tests
 ```
 
-Getestet: Determinismus (5000 Frames Random-Input), Rollback, Treffer, Block, Ultimate-Kosten,
-Wandbruch, Technik (Schwerkraftknoten zieht Gegner).
+Getestet: Body-Balance, Determinismus + Rollback (4000 Frames Fuzz), Hit/Block/Parry/Grab, Nullfunke,
+Super Armor, Skill-Kosten/Cooldown/Burnout, Apex, Realm (Lock, Nullgeboren-Immunität), Clash,
+Schutzkreis, Distanzfeld, Hitze-Stacks, Essenz-Burst, Wandbruch, Pakte.

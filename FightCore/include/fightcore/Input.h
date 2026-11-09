@@ -4,24 +4,34 @@
 
 namespace fc {
 
-// Button-Layout ist bewusst Controller-first und handheld-freundlich:
-// keine Pflicht-Motion-Inputs, Specials = Richtung + Taste.
+// Gleiche Steuerung für ALLE Builds (GDD-Pillar 1).
+//  Face:      Light, Heavy, Grab, Jump
+//  Schultern: Guard (R1), Mod (L1), Dash (R2), Ult (L2)
+//
+//  Mod + Light/Heavy/Grab  -> Skill 1/2/3 (Offense / Utility / Defense-Movement)
+//  Ult                     -> Apex-Technik (Maximum)
+//  Mod + Ult               -> Realm öffnen (100 % Realm-Meter)
+//  Ult während gegn. Realm -> Schutzkreis (halten)
+//  Guard + Grab            -> Essenz-Burst (Notfall-Pushback, auch aus Hitstun)
+//  Guard + Dash            -> Dodge
+//  Mod + Guard (halten)    -> Rückfluss (Heilung, steht still)
+//  Mod + Dash              -> Verstärkung an/aus
 enum Button : uint8_t {
-    BtnLight    = 1 << 0,
-    BtnHeavy    = 1 << 1,
-    BtnSpecial  = 1 << 2, // Technik-Taste
-    BtnGuard    = 1 << 3,
-    BtnJump     = 1 << 4,
-    BtnDash     = 1 << 5,
-    BtnUltimate = 1 << 6, // Realm / Ultimate
+    BtnLight = 1 << 0,
+    BtnHeavy = 1 << 1,
+    BtnGrab  = 1 << 2,
+    BtnGuard = 1 << 3,
+    BtnJump  = 1 << 4,
+    BtnDash  = 1 << 5,
+    BtnMod   = 1 << 6,
+    BtnUlt   = 1 << 7,
 };
 
-// Richtung im Numpad-Format, relativ zur Blickrichtung des Kämpfers:
-// 6 = vorwärts, 4 = rückwärts, 8 = Sidestep links, 2 = Sidestep rechts, 5 = neutral.
+// Richtung im Numpad-Format relativ zum Gegner: 6 vor, 4 zurück, 8/2 Sidestep, 5 neutral.
 struct FrameInput {
     uint8_t dir = 5;
     uint8_t buttons = 0;
-    uint8_t consumed = 0; // bereits verbrauchte Tastendrücke (Buffer)
+    uint8_t consumed = 0;
 };
 
 class InputBuffer {
@@ -37,26 +47,23 @@ public:
     const FrameInput& current() const { return ago(0); }
     bool held(uint8_t btn) const { return (current().buttons & btn) != 0; }
 
-    // Wurde btn in den letzten `window` Frames frisch gedrückt (und noch nicht verbraucht)?
-    bool pressedWithin(uint8_t btn, int window) const { return findPress(btn, window) >= 0; }
-
+    // Alter (in Frames) des jüngsten unverbrauchten Drucks von btn, oder -1.
+    int pressAge(uint8_t btn, int window) const {
+        for (int i = 0; i < window && i < kSize - 1; ++i) {
+            const FrameInput& now = ago(i);
+            if ((now.buttons & btn) && !(ago(i + 1).buttons & btn) && !(now.consumed & btn)) return i;
+        }
+        return -1;
+    }
+    bool pressedWithin(uint8_t btn, int window) const { return pressAge(btn, window) >= 0; }
     void consume(uint8_t btn, int window) {
-        int i = findPress(btn, window);
+        int i = pressAge(btn, window);
         if (i >= 0) hist_[(head_ + kSize - i) % kSize].consumed |= btn;
     }
 
     uint64_t hash(uint64_t h) const;
 
 private:
-    int findPress(uint8_t btn, int window) const {
-        for (int i = 0; i < window && i < kSize - 1; ++i) {
-            const FrameInput& now = ago(i);
-            const FrameInput& before = ago(i + 1);
-            if ((now.buttons & btn) && !(before.buttons & btn) && !(now.consumed & btn)) return i;
-        }
-        return -1;
-    }
-
     std::array<FrameInput, kSize> hist_{};
     uint8_t head_ = 0;
 };

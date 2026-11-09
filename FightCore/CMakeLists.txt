@@ -4,13 +4,15 @@ project(FightCore CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Reines C++ ohne Engine-Abhängigkeit. Unreal bindet dieses Modul später als
-# ThirdParty-/Runtime-Modul ein.
+# Reines C++ ohne Engine-Abhängigkeit. Unreal bindet dieses Modul später ein.
 add_library(fightcore
     src/Simulation.cpp
-    characters/Kael.cpp
+    src/Body.cpp
+    src/Pact.cpp
+    techniques/Nullraum.cpp
+    techniques/Glutkern.cpp
 )
-target_include_directories(fightcore PUBLIC include characters)
+target_include_directories(fightcore PUBLIC include techniques)
 if(MSVC)
     target_compile_options(fightcore PRIVATE /W4)
 else()
