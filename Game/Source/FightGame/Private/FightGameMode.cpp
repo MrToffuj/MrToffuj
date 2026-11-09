@@ -51,6 +51,15 @@ void AFightGameMode::BeginPlay()
 	for (int32 i = 1; i < Locals; ++i)
 		if (!UGameplayStatics::GetPlayerController(this, i))
 			UGameplayStatics::CreatePlayer(this, i, true);
+
+	// The menu switched the viewport to UI-only input, and that setting lives on the viewport,
+	// not the level, so it survives the reload. Hand input back to the game explicitly.
+	for (int32 i = 0; i < Locals; ++i)
+		if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, i))
+		{
+			PC->SetInputMode(FInputModeGameOnly());
+			PC->SetShowMouseCursor(false);
+		}
 	Director = GetWorld()->SpawnActor<AFightDirector>(AFightDirector::StaticClass(), FTransform::Identity);
 }
 
