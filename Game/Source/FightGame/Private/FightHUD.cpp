@@ -6,6 +6,7 @@
 #include "EngineUtils.h"
 #include "FightDirector.h"
 #include "FightGameSettings.h"
+#include "FightUserSettings.h"
 
 void AFightHUD::DrawBar(float X, float Y, float W, float H, float Fill, const FLinearColor& Color, bool bMirror)
 {
@@ -182,12 +183,7 @@ void AFightHUD::DrawHUD()
 		for (TActorIterator<AFightDirector> It(GetWorld()); It; ++It) Director = *It;
 	if (!Director.IsValid()) return;
 	const FString NetStatus = Director->GetNetStatus();
-	if (!Director->HasSession())
-	{
-		UiScale = FMath::Min(Canvas->ClipY / 1080.f, Canvas->ClipX / 960.f);
-		DrawCentered(NetStatus.IsEmpty() ? FString(TEXT("Connecting ...")) : NetStatus, Canvas->ClipY * 0.45f, FLinearColor::White, 1.4f, false);
-		return;
-	}
+	if (!Director->HasSession()) return; // the lobby screen covers this
 
 	const fc::MatchState& State = Director->GetState();
 	const fc::MatchSetup& Setup = Director->GetSetup();
@@ -244,7 +240,8 @@ void AFightHUD::DrawHUD()
 
 	if (!NetStatus.IsEmpty()) DrawCentered(NetStatus, H * 0.1f, FLinearColor(1.f, 0.6f, 0.3f), 1.f, false);
 
-	if (GetDefault<UFightGameSettings>()->bShowFrameInfo)
+	const UFightUserSettings* User = UFightUserSettings::Get();
+	if (User ? User->bShowFrameInfo : GetDefault<UFightGameSettings>()->bShowFrameInfo)
 	{
 		DrawLabel(FString::Printf(TEXT("Frame %d   Rollbacks %d"), State.frame, Director->GetRollbackCount()),
 			40.f * S, H - 60.f * S, FLinearColor(0.7f, 0.7f, 0.7f), 0.7f);

@@ -83,6 +83,8 @@ public:
     void poll();
     // Peers that joined so far, host included.
     int peerCount() const;
+    // Players on all of them, splitscreen counts every player.
+    int playerCount() const;
     // Fixes the lobby and tells everyone. Bots fill the free slots.
     LobbyConfig start(GameMode mode, const ModeRules& rules, uint8_t botLevel, uint32_t seed, uint8_t inputDelay,
                       const std::vector<std::string>& peerAddresses = {});

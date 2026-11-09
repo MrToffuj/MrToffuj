@@ -7,6 +7,8 @@
 #include "FightGame.h"
 #include "FightGameSettings.h"
 #include "FightAppearance.h"
+#include "FightOnline.h"
+#include "FightUserSettings.h"
 #include "FightProfile.h"
 #include "FightShapeVisual.h"
 #include "HAL/FileManager.h"
@@ -92,13 +94,12 @@ namespace
 	std::string ToStd(const FName& Name) { return std::string(TCHAR_TO_UTF8(*Name.ToString())); }
 	std::string ToStd(const FString& Text) { return std::string(TCHAR_TO_UTF8(*Text)); }
 
-	fc::ModeRules ToRules(const UFightGameSettings& S)
+	fc::ModeRules ToRules(EFightMode MenuMode, const FFightCustomRules& C)
 	{
-		const fc::GameMode Mode = ToMode(S.Mode);
+		const fc::GameMode Mode = ToMode(MenuMode);
 		fc::ModeRules R = fc::rulesFor(Mode);
 		if (Mode != fc::GameMode::Custom) return R;
 
-		const FFightCustomRules& C = S.Custom;
 		R.fighters = static_cast<int8_t>(FMath::Clamp(C.Fighters, 2, fc::kMaxFighters));
 		R.teamCount = static_cast<uint8_t>(FMath::Clamp(C.Teams, 0, static_cast<int32>(R.fighters)));
 		R.objective = static_cast<fc::Objective>(C.Objective);
@@ -191,7 +192,8 @@ AFightDirector::AFightDirector()
 void AFightDirector::BeginPlay()
 {
 	Super::BeginPlay();
-	NetMode = GetDefault<UFightGameSettings>()->NetMode;
+	if (const UFightOnline* Online = UFightOnline::Get(this)) Request = Online->GetRequest();
+	NetMode = Request.Net;
 	if (IsOnline())
 	{
 		StartOnline(); // the arena shows up once the lobby is done
@@ -235,9 +237,9 @@ void AFightDirector::BuildSession()
 {
 	LoadMods();
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
-	const fc::GameMode Mode = ToMode(S->Mode);
-	const fc::ModeRules Rules = ToRules(*S);
-	LocalPlayers = FMath::Clamp(S->LocalPlayers, 1, FMath::Min<int32>(MaxLocalPlayers, Rules.fighters));
+	const fc::GameMode Mode = ToMode(Request.Mode);
+	const fc::ModeRules Rules = ToRules(Request.Mode, Request.Custom);
+	LocalPlayers = FMath::Clamp(Request.LocalPlayers, 1, FMath::Min<int32>(MaxLocalPlayers, Rules.fighters));
 	for (int32 i = 0; i < MaxLocalPlayers; ++i) LocalFighters[i] = i;
 
 	fc::Loadout Humans[MaxLocalPlayers];
@@ -404,7 +406,8 @@ void AFightDirector::SpawnFighterVisuals()
 void AFightDirector::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (LobbyHost || LobbyClient || (Eos && !Peer)) PollLobby(DeltaSeconds);
+	if (LobbyHost || LobbyClient || (MatchLobby && !Peer)) PollLobby(DeltaSeconds);
+	if (IsOnline() && !Peer) WaitSeconds += DeltaSeconds;
 	if (!HasSession()) return;
 
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
@@ -419,7 +422,9 @@ void AFightDirector::Tick(float DeltaSeconds)
 		Samplers[i].Sample(PC, PC0, S->Gamepad, Keys, i == 0);
 	}
 
-	Accumulator += FMath::Min(static_cast<double>(DeltaSeconds), 0.25);
+	// an offline match simply stops while the pause menu is open
+	const bool bPaused = bMenuOpen && !Peer;
+	Accumulator = bPaused ? 0.0 : Accumulator + FMath::Min(static_cast<double>(DeltaSeconds), 0.25);
 	while (Accumulator >= FixedStep)
 	{
 		SimulateFrame();
@@ -441,7 +446,7 @@ void AFightDirector::SimulateFrame()
 
 	const int32 Frame = Session->frame();
 	for (int32 p = 0; p < LocalPlayers; ++p)
-		Session->setInput(p, Frame, Samplers[p].Build(S->StickDeadzone, CameraState[p].Yaw));
+		Session->setInput(p, Frame, BuildInput(p));
 
 	Events.clear();
 	Session->advance(&Events);
@@ -456,6 +461,15 @@ void AFightDirector::SimulateFrame()
 		}
 		if (++RoundOverFrames >= S->RestartDelayFrames) RestartMatch();
 	}
+}
+
+fc::FrameInput AFightDirector::BuildInput(int32 LocalIndex) const
+{
+	// the player who opened the pause menu stands still, everyone else keeps fighting
+	if (bMenuOpen && LocalIndex == 0) return fc::FrameInput{};
+	const UFightUserSettings* User = UFightUserSettings::Get();
+	const float Deadzone = User ? User->StickDeadzone : GetDefault<UFightGameSettings>()->StickDeadzone;
+	return Samplers[LocalIndex].Build(Deadzone, CameraState[LocalIndex].Yaw);
 }
 
 int32 AFightDirector::GetPlayerIndex(const APlayerController* PC) const
@@ -671,7 +685,10 @@ void AFightDirector::UpdateCameras(float DeltaSeconds)
 		{
 			// free camera: the right stick turns it
 			if (!Cam.bInitialized) Cam.Yaw = FightUnits::ToWorldDir(F.facing).Rotation().Yaw;
-			Cam.Yaw += Samplers[i].GetLookYaw() * S->CameraTurnSpeed * DeltaSeconds;
+			const UFightUserSettings* User = UFightUserSettings::Get();
+			const float TurnSpeed = User ? User->CameraTurnSpeed : S->CameraTurnSpeed;
+			const float Invert = User && User->bInvertCameraX ? -1.f : 1.f;
+			if (!(bMenuOpen && i == 0)) Cam.Yaw += Samplers[i].GetLookYaw() * Invert * TurnSpeed * DeltaSeconds;
 			Cam.Forward = FRotator(0.f, Cam.Yaw, 0.f).Vector();
 			LookAt = Self + Cam.Forward * 600.f + FVector(0.f, 0.f, 110.f);
 		}
@@ -725,36 +742,35 @@ void AFightDirector::StartOnline()
 {
 	LoadMods(); // the content hash has to be final before the first Hello
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
-	LocalPlayers = FMath::Clamp(S->LocalPlayers, 1, MaxLocalPlayers);
+	LocalPlayers = FMath::Clamp(Request.LocalPlayers, 1, MaxLocalPlayers);
 	std::vector<fc::net::PlayerRequest> Requests;
 	for (int32 i = 0; i < LocalPlayers; ++i)
 		Requests.push_back(ToRequest(S->Loadouts.IsValidIndex(i) ? S->Loadouts[i] : FFightLoadout()));
-
-	const bool bHost = NetMode == EFightNetMode::Host;
 	LobbyTime = 0.f;
+	WaitSeconds = 0.f;
 
 	if (S->Backend == EFightNetBackend::Eos)
 	{
 		// Matchmaking first, the fc::net handshake starts once we sit in an EOS lobby.
 		// The bucket keeps different builds, mod sets and modes apart.
-		FFightEos::FConfig Config;
-		Config.ProductId = S->EosProductId;
-		Config.SandboxId = S->EosSandboxId;
-		Config.DeploymentId = S->EosDeploymentId;
-		Config.ClientId = S->EosClientId;
-		Config.ClientSecret = S->EosClientSecret;
-		Config.DisplayName = S->DisplayName;
-		Config.LobbyCode = S->LobbyCode.TrimStartAndEnd();
-		Config.bHost = bHost;
-		Config.MaxMembers = ToRules(*S).fighters; // one console has at least one fighter
-		Config.Bucket = FString::Printf(TEXT("carnage:%u:%d:%016llx"), static_cast<uint32>(fc::net::kProtocolVersion), static_cast<int32>(S->Mode),
-			static_cast<unsigned long long>(fc::Registry::instance().contentHash()));
+		UFightOnline* Online = UFightOnline::Get(this);
+		if (!Online) return;
+		Online->EnsureLoggedIn();
+		FFightEosLobby::FConfig Config;
+		Config.Join = NetMode == EFightNetMode::Host ? FFightEosLobby::EJoin::Host
+			: NetMode == EFightNetMode::Join ? FFightEosLobby::EJoin::Join : FFightEosLobby::EJoin::Auto;
+		Config.LobbyCode = Request.JoinCode.TrimStartAndEnd();
+		Config.MaxMembers = ToRules(Request.Mode, Request.Custom).fighters; // a console has at least one fighter
+		Config.Bucket = FString::Printf(TEXT("carnage:%u:%d:%016llx"), static_cast<uint32>(fc::net::kProtocolVersion),
+			static_cast<int32>(Request.Mode), static_cast<unsigned long long>(fc::Registry::instance().contentHash()));
 		PendingRequests = std::move(Requests);
-		Eos = MakeUnique<FFightEos>();
-		Eos->Begin(Config);
+		MatchLobby = MakeUnique<FFightEosLobby>(Online->GetPlatform());
+		MatchLobby->Begin(Config);
 		return;
 	}
 
+	// direct IP: quick match makes no sense without matchmaking, so that hosts
+	const bool bHost = NetMode != EFightNetMode::Join;
 	Udp = MakeUnique<FFightUdpTransport>();
 	if (!Udp->Open(bHost ? S->Port : 0))
 	{
@@ -766,17 +782,18 @@ void AFightDirector::StartOnline()
 	{
 		Link->SetAcceptNewPeers(true);
 		LobbyHost = MakeUnique<fc::net::LobbyHost>(*Link, std::move(Requests));
-		UE_LOG(LogFight, Log, TEXT("Hosting on port %d, waiting for %d consoles"), Udp->GetBoundPort(), S->WaitForConsoles);
+		UE_LOG(LogFight, Log, TEXT("Hosting on port %d"), Udp->GetBoundPort());
 	}
 	else
 	{
-		if (!Link->SetPeer(0, S->HostAddress))
+		const FString Address = Request.JoinCode.IsEmpty() ? S->HostAddress : Request.JoinCode;
+		if (!Link->SetPeer(0, Address))
 		{
-			NetError = FString::Printf(TEXT("Bad host address '%s'"), *S->HostAddress);
+			NetError = FString::Printf(TEXT("Bad host address '%s'"), *Address);
 			return;
 		}
 		LobbyClient = MakeUnique<fc::net::LobbyClient>(*Link, std::move(Requests));
-		UE_LOG(LogFight, Log, TEXT("Joining %s"), *S->HostAddress);
+		UE_LOG(LogFight, Log, TEXT("Joining %s"), *Address);
 	}
 }
 
@@ -787,8 +804,7 @@ void AFightDirector::EndPlay(const EEndPlayReason::Type Reason)
 	LobbyHost.Reset();
 	LobbyClient.Reset();
 	Link = nullptr;
-	if (Eos) Eos->Shutdown();
-	Eos.Reset();
+	MatchLobby.Reset(); // leaves the EOS lobby
 	Udp.Reset();
 	Super::EndPlay(Reason);
 }
@@ -796,15 +812,24 @@ void AFightDirector::EndPlay(const EEndPlayReason::Type Reason)
 void AFightDirector::PollLobby(float DeltaSeconds)
 {
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
-	if (Eos)
+	if (MatchLobby)
 	{
-		Eos->Tick(DeltaSeconds);
-		if (!Link && Eos->IsReady())
+		MatchLobby->Tick(DeltaSeconds);
+		if (!Link && MatchLobby->IsReady())
 		{
-			Link = Eos->GetTransport();
-			if (NetMode == EFightNetMode::Host) LobbyHost = MakeUnique<fc::net::LobbyHost>(*Link, std::move(PendingRequests));
-			else LobbyClient = MakeUnique<fc::net::LobbyClient>(*Link, std::move(PendingRequests));
-			LobbyTime = 0.f; // the wait for players starts now
+			Link = MatchLobby->GetTransport();
+			if (MatchLobby->IsHost())
+			{
+				LobbyHost = MakeUnique<fc::net::LobbyHost>(*Link, std::move(PendingRequests));
+				// party leader: tell the others where to go
+				if (Request.bForParty)
+					if (UFightOnline* Online = UFightOnline::Get(this)) Online->AnnounceMatch(MatchLobby->GetLobbyId(), Request.Mode);
+			}
+			else
+			{
+				LobbyClient = MakeUnique<fc::net::LobbyClient>(*Link, std::move(PendingRequests));
+			}
+			LobbyTime = 0.f;
 		}
 		if (!Link) return;
 	}
@@ -837,18 +862,71 @@ void AFightDirector::PollLobby(float DeltaSeconds)
 		return;
 	}
 	LobbyHost->poll();
-	const bool bFull = LobbyHost->peerCount() >= S->WaitForConsoles;
-	const bool bTimeout = S->LobbyTimeoutSeconds > 0.f && LobbyTime >= S->LobbyTimeoutSeconds;
-	if (!bFull && !bTimeout) return;
+	// start once every slot has a human, or when the host gave up waiting and wants bots
+	const bool bFull = LobbyHost->playerCount() >= GetLobbyTarget();
+	if (!bFull && !bFillRequested) return;
 
 	Link->SetAcceptNewPeers(false);
-	if (Eos) Eos->LockLobby();
+	if (MatchLobby) MatchLobby->Lock();
 	std::vector<std::string> Addresses;
 	for (const FString& A : Link->GetPeerAddresses()) Addresses.push_back(ToStd(A));
-	const fc::net::LobbyConfig Config = LobbyHost->start(ToMode(S->Mode), ToRules(*S), static_cast<uint8_t>(S->BotLevel),
-		static_cast<uint32_t>(FMath::Rand()), static_cast<uint8_t>(S->InputDelay), Addresses);
+	const UFightUserSettings* User = UFightUserSettings::Get();
+	const int32 Delay = User ? User->InputDelay : S->InputDelay;
+	const fc::net::LobbyConfig Config = LobbyHost->start(ToMode(Request.Mode), ToRules(Request.Mode, Request.Custom),
+		static_cast<uint8_t>(S->BotLevel), static_cast<uint32_t>(FMath::Rand()), static_cast<uint8_t>(FMath::Clamp(Delay, 0, 6)), Addresses);
 	StartResends = 30; // 3 seconds
 	BeginOnlineMatch(Config, 0);
+}
+
+bool AFightDirector::IsLobbyHost() const
+{
+	return LobbyHost.IsValid() && !Peer;
+}
+
+int32 AFightDirector::GetLobbyTarget() const
+{
+	return ToRules(Request.Mode, Request.Custom).fighters;
+}
+
+int32 AFightDirector::GetLobbyPlayers() const
+{
+	if (LobbyHost) return LobbyHost->playerCount();
+	// joiners don't know the loadouts of the others, consoles are close enough
+	return MatchLobby && MatchLobby->IsReady() ? MatchLobby->GetMemberCount() : 0;
+}
+
+float AFightDirector::GetBotOfferSeconds() const
+{
+	return GetDefault<UFightGameSettings>()->BotFillOfferSeconds;
+}
+
+bool AFightDirector::CanFillWithBots() const
+{
+	return IsOnline() && !Peer && !bFillRequested && WaitSeconds >= GetBotOfferSeconds();
+}
+
+void AFightDirector::FillWithBots()
+{
+	if (!CanFillWithBots()) return;
+	if (IsLobbyHost())
+	{
+		bFillRequested = true; // PollLobby starts the match with whoever is there
+		return;
+	}
+	// waiting in someone else's lobby (or still searching): play the same mode offline instead
+	if (UFightOnline* Online = UFightOnline::Get(this))
+	{
+		FFightMatchRequest Offline = Request;
+		Offline.Net = EFightNetMode::Offline;
+		Offline.bForParty = false;
+		Offline.JoinCode.Reset();
+		Online->StartMatch(Offline);
+	}
+}
+
+void AFightDirector::SetMenuOpen(bool bOpen)
+{
+	bMenuOpen = bOpen;
 }
 
 bool AFightDirector::BeginOnlineMatch(const fc::net::LobbyConfig& Config, uint8 LocalPeer)
@@ -888,7 +966,7 @@ void AFightDirector::SimulateOnlineFrame()
 {
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
 	for (int32 p = 0; p < LocalPlayers; ++p)
-		Peer->setLocalInput(p, Samplers[p].Build(S->StickDeadzone, CameraState[p].Yaw));
+		Peer->setLocalInput(p, BuildInput(p));
 
 	Previous = Peer->session().state();
 	bHasPrevious = true;
@@ -929,11 +1007,9 @@ void AFightDirector::Rematch()
 FString AFightDirector::GetNetStatus() const
 {
 	if (!NetError.IsEmpty()) return NetError;
-	if (Eos && (!Link || Eos->GetStep() == FFightEos::EStep::Failed)) return Eos->GetStatus();
-	if (LobbyClient) return TEXT("Waiting for the host ...");
-	if (LobbyHost && !Peer)
-		return FString::Printf(TEXT("Lobby: %d / %d consoles  (%s)"), LobbyHost->peerCount(),
-			GetDefault<UFightGameSettings>()->WaitForConsoles, Link ? *Link->Describe() : TEXT(""));
+	if (MatchLobby && (!Link || MatchLobby->GetStep() == FFightEosLobby::EStep::Failed)) return MatchLobby->GetStatus();
+	if (LobbyClient) return TEXT("In a lobby, waiting for the host to start ...");
+	if (LobbyHost && !Peer) return Link ? Link->Describe() : FString();
 	if (!Peer) return FString();
 	if (Peer->desynced()) return TEXT("DESYNC - the consoles disagree, check that everyone has the same mods");
 	if (Peer->stalled()) return TEXT("Waiting for other players ...");

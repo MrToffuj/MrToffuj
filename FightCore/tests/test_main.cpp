@@ -1218,6 +1218,7 @@ struct P2PMatch {
             for (auto& c : clients) all &= c->poll();
             host.poll();
             if (!started && host.peerCount() == peerCount) {
+                CHECK(host.playerCount() == peerCount * playersPerPeer);
                 hostConfig = host.start(mode, rules, 1, 99, static_cast<uint8_t>(delay));
                 started = true;
             }

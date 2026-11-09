@@ -55,71 +55,129 @@ private:
 	bool bAcceptNewPeers = false;
 };
 
-// Logs in, finds or creates an EOS lobby and hands out a ready transport.
-// The EOS lobby is only matchmaking: who plays with whom. The actual handshake
-// (versions, mods, loadouts, slots) is still fc::net's Hello/Start over P2P.
-class FIGHTGAME_API FFightEos
+// The EOS platform and the login. One per game run (UFightOnline owns it), so the party
+// and the match lobby share it and nobody logs in twice.
+//
+// Device id login: no account, no password, the id sticks to this install. Consoles log in
+// with their platform token instead (PSN, Xbox, Nintendo), which comes from the platform
+// SDKs and only builds on dev kits.
+class FIGHTGAME_API FFightEosPlatform
 {
 public:
-	enum class EStep : uint8 { Off, LoggingIn, Searching, CreatingLobby, JoiningLobby, Ready, Failed };
-
 	struct FConfig
 	{
 		FString ProductId, SandboxId, DeploymentId, ClientId, ClientSecret;
 		FString DisplayName = TEXT("Player");
-		// Only lobbies in the same bucket see each other. The director puts the game
-		// version, mode and mod hash in there, so nobody gets matched with a different build.
-		FString Bucket;
-		FString LobbyCode; // join exactly this lobby instead of searching
-		bool bHost = false;
-		int32 MaxMembers = 2;
 	};
 
-	FFightEos();
-	~FFightEos();
+	FFightEosPlatform();
+	~FFightEosPlatform();
+
+	// Safe to call again, it only starts once.
+	void Begin(const FConfig& Config);
+	void Shutdown();
+
+	bool IsLoggedIn() const { return Me != nullptr; }
+	bool HasFailed() const { return !Error.IsEmpty(); }
+	FString GetStatus() const;
+	EOS_HPlatform GetHandle() const { return Handle; }
+	EOS_ProductUserId GetUser() const { return Me; }
+
+private:
+	static void EOS_CALL OnDeviceId(const EOS_Connect_CreateDeviceIdCallbackInfo* Data);
+	static void EOS_CALL OnLogin(const EOS_Connect_LoginCallbackInfo* Data);
+	static void EOS_CALL OnUserCreated(const EOS_Connect_CreateUserCallbackInfo* Data);
+	void Fail(const FString& Why);
+
+	IEOSPlatformHandlePtr Platform;
+	EOS_HPlatform Handle = nullptr;
+	EOS_ProductUserId Me = nullptr;
+	bool bStarted = false;
+	FString Error;
+	// EOS keeps pointers to these
+	std::string ProductId, SandboxId, DeploymentId, ClientId, ClientSecret, CacheDir, DisplayName;
+};
+
+// One EOS lobby: a match lobby (with a P2P transport for fc::net) or a party (just a group
+// of friends that follows its leader into matches).
+//
+// For matches the EOS lobby is only matchmaking. The real handshake (versions, mods,
+// loadouts, slots) is still fc::net's Hello/Start over the transport.
+class FIGHTGAME_API FFightEosLobby
+{
+public:
+	enum class EJoin : uint8
+	{
+		Host, // open a lobby
+		Join, // find one (or the one in LobbyCode) and keep looking until it works
+		Auto  // look for a while, open our own if nothing turns up
+	};
+	enum class EStep : uint8 { WaitingForLogin, Searching, CreatingLobby, JoiningLobby, Ready, Failed, Closed };
+
+	struct FConfig
+	{
+		EJoin Join = EJoin::Auto;
+		// Only lobbies in the same bucket see each other. The director puts the game version,
+		// mode and mod hash in there, so nobody gets matched with a different build.
+		FString Bucket;
+		FString LobbyCode;
+		int32 MaxMembers = 2;
+		bool bTransport = true;          // false for parties
+		float AutoSearchSeconds = 15.f;  // EJoin::Auto: how long to look before hosting
+	};
+
+	explicit FFightEosLobby(FFightEosPlatform& InPlatform);
+	~FFightEosLobby();
 
 	void Begin(const FConfig& InConfig);
 	void Tick(float DeltaSeconds);
-	// Host, once the match starts: the lobby stops showing up in searches.
-	void LockLobby();
 	void Shutdown();
+
+	// Host only. Lobby attributes are how the party leader tells everyone which match to join.
+	void SetAttribute(const FString& Key, const FString& Value);
+	// Members see the host's attributes. Refreshed in Tick.
+	FString GetAttribute(const FString& Key) const;
+	int32 GetMemberCount() const { return MemberCount; }
+	// Host, once the match starts: the lobby stops showing up in searches.
+	void Lock();
 
 	EStep GetStep() const { return Step; }
 	bool IsReady() const { return Step == EStep::Ready; }
+	bool IsHost() const { return bHosting; }
 	FString GetStatus() const;
 	FString GetLobbyId() const { return LobbyId; }
 	IFightTransport* GetTransport() { return IsReady() ? Transport.Get() : nullptr; }
 
 private:
-	static FFightEos* Alive(void* ClientData);
-	static void EOS_CALL OnDeviceId(const EOS_Connect_CreateDeviceIdCallbackInfo* Data);
-	static void EOS_CALL OnLogin(const EOS_Connect_LoginCallbackInfo* Data);
-	static void EOS_CALL OnUserCreated(const EOS_Connect_CreateUserCallbackInfo* Data);
+	static FFightEosLobby* Alive(void* ClientData);
 	static void EOS_CALL OnLobbyCreated(const EOS_Lobby_CreateLobbyCallbackInfo* Data);
 	static void EOS_CALL OnSearchDone(const EOS_LobbySearch_FindCallbackInfo* Data);
 	static void EOS_CALL OnJoined(const EOS_Lobby_JoinLobbyCallbackInfo* Data);
 	static void EOS_CALL OnLobbyUpdated(const EOS_Lobby_UpdateLobbyCallbackInfo* Data);
 	static void EOS_CALL OnLeft(const EOS_Lobby_LeaveLobbyCallbackInfo* Data);
 
-	void Login();
-	void LoggedIn(EOS_ProductUserId User);
+	void Start();
 	void CreateLobby();
 	void Search();
+	void BecomeReady(const char* Id, bool bAsHost);
+	void Refresh();
 	void Fail(const FString& Why);
+	EOS_HLobby Lobbies() const;
 
+	FFightEosPlatform& Platform;
 	FConfig Config;
-	EStep Step = EStep::Off;
+	EStep Step = EStep::WaitingForLogin;
 	FString Error;
-	IEOSPlatformHandlePtr Platform;
-	EOS_HPlatform Handle = nullptr;
-	EOS_ProductUserId Me = nullptr;
+	bool bHosting = false;
 	EOS_HLobbySearch SearchHandle = nullptr;
 	EOS_HLobbyDetails PendingJoin = nullptr;
 	FString PendingHost;
 	FString LobbyId;
 	float RetryTimer = 0.f;
+	float SearchTime = 0.f;
+	float RefreshTimer = 0.f;
+	int32 MemberCount = 0;
+	TMap<FString, FString> Attributes;
 	TUniquePtr<FFightEosTransport> Transport;
-
-	// EOS strings have to stay alive while the SDK holds the pointers
-	std::string ProductId, SandboxId, DeploymentId, ClientId, ClientSecret, CacheDir, DisplayName, Bucket;
+	std::string Bucket;
 };

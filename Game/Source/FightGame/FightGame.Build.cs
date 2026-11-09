@@ -18,7 +18,7 @@ public class FightGame : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
-			"Core", "CoreUObject", "Engine", "InputCore", "DeveloperSettings", "Sockets", "Networking", "EOSSDK", "EOSShared"
+			"Core", "CoreUObject", "Engine", "InputCore", "DeveloperSettings", "Sockets", "Networking", "EOSSDK", "EOSShared", "Slate", "SlateCore", "ApplicationCore"
 		});
 	}
 }

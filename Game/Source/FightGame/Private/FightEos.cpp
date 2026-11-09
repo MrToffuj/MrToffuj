@@ -205,34 +205,30 @@ bool FFightEosTransport::receive(uint8_t& Peer, std::vector<uint8_t>& Packet)
 	}
 }
 
-// ---------------------------------------------------------------- session
+// ---------------------------------------------------------------- platform
 
-FFightEos::FFightEos()
+FFightEosPlatform::FFightEosPlatform()
 {
 	GLive.Add(this);
 }
 
-FFightEos::~FFightEos()
+FFightEosPlatform::~FFightEosPlatform()
 {
 	Shutdown();
 	GLive.Remove(this);
 }
 
-FFightEos* FFightEos::Alive(void* ClientData)
-{
-	return GLive.Contains(ClientData) ? static_cast<FFightEos*>(ClientData) : nullptr;
-}
-
-void FFightEos::Fail(const FString& Why)
+void FFightEosPlatform::Fail(const FString& Why)
 {
 	Error = Why;
-	Step = EStep::Failed;
 	UE_LOG(LogFight, Error, TEXT("EOS: %s"), *Why);
 }
 
-void FFightEos::Begin(const FConfig& InConfig)
+void FFightEosPlatform::Begin(const FConfig& Config)
 {
-	Config = InConfig;
+	if (bStarted) return;
+	bStarted = true;
+	Error.Reset();
 	if (Config.ProductId.IsEmpty() || Config.ClientId.IsEmpty())
 	{
 		Fail(TEXT("EOS isn't set up yet: put the product, sandbox, deployment and client ids into Project Settings > Game > Online"));
@@ -261,7 +257,6 @@ void FFightEos::Begin(const FConfig& InConfig)
 	ClientSecret = Utf8(Config.ClientSecret);
 	CacheDir = Utf8(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("EOS")));
 	DisplayName = Utf8(Config.DisplayName.Left(32));
-	Bucket = Utf8(Config.Bucket);
 
 	EOS_Platform_Options Options = {};
 	Options.ApiVersion = EOS_PLATFORM_OPTIONS_API_LATEST;
@@ -281,25 +276,17 @@ void FFightEos::Begin(const FConfig& InConfig)
 		Fail(TEXT("couldn't create the EOS platform, check the ids"));
 		return;
 	}
-	Login();
+
+	EOS_Connect_CreateDeviceIdOptions DeviceOptions = {};
+	DeviceOptions.ApiVersion = EOS_CONNECT_CREATEDEVICEID_API_LATEST;
+	DeviceOptions.DeviceModel = "FightGame";
+	EOS_Connect_CreateDeviceId(EOS_Platform_GetConnectInterface(Handle), &DeviceOptions, this, &FFightEosPlatform::OnDeviceId);
 }
 
-// Device id login: no account, no password, the id sticks to this install.
-// Consoles log in with their platform token instead (PSN, Xbox, Nintendo), which comes from
-// the platform SDKs and only builds on dev kits.
-void FFightEos::Login()
+void EOS_CALL FFightEosPlatform::OnDeviceId(const EOS_Connect_CreateDeviceIdCallbackInfo* Data)
 {
-	Step = EStep::LoggingIn;
-	EOS_Connect_CreateDeviceIdOptions Options = {};
-	Options.ApiVersion = EOS_CONNECT_CREATEDEVICEID_API_LATEST;
-	Options.DeviceModel = "FightGame";
-	EOS_Connect_CreateDeviceId(EOS_Platform_GetConnectInterface(Handle), &Options, this, &FFightEos::OnDeviceId);
-}
-
-void EOS_CALL FFightEos::OnDeviceId(const EOS_Connect_CreateDeviceIdCallbackInfo* Data)
-{
-	FFightEos* Self = Alive(Data->ClientData);
-	if (!Self) return;
+	if (!GLive.Contains(Data->ClientData)) return;
+	FFightEosPlatform* Self = static_cast<FFightEosPlatform*>(Data->ClientData);
 	// "duplicate" means this install already has one, that's fine
 	if (Data->ResultCode != EOS_EResult::EOS_Success && Data->ResultCode != EOS_EResult::EOS_DuplicateNotAllowed)
 	{
@@ -317,16 +304,17 @@ void EOS_CALL FFightEos::OnDeviceId(const EOS_Connect_CreateDeviceIdCallbackInfo
 	Options.ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
 	Options.Credentials = &Credentials;
 	Options.UserLoginInfo = &Info;
-	EOS_Connect_Login(EOS_Platform_GetConnectInterface(Self->Handle), &Options, Self, &FFightEos::OnLogin);
+	EOS_Connect_Login(EOS_Platform_GetConnectInterface(Self->Handle), &Options, Self, &FFightEosPlatform::OnLogin);
 }
 
-void EOS_CALL FFightEos::OnLogin(const EOS_Connect_LoginCallbackInfo* Data)
+void EOS_CALL FFightEosPlatform::OnLogin(const EOS_Connect_LoginCallbackInfo* Data)
 {
-	FFightEos* Self = Alive(Data->ClientData);
-	if (!Self || !EOS_EResult_IsOperationComplete(Data->ResultCode)) return;
+	if (!GLive.Contains(Data->ClientData) || !EOS_EResult_IsOperationComplete(Data->ResultCode)) return;
+	FFightEosPlatform* Self = static_cast<FFightEosPlatform*>(Data->ClientData);
 	if (Data->ResultCode == EOS_EResult::EOS_Success)
 	{
-		Self->LoggedIn(Data->LocalUserId);
+		Self->Me = Data->LocalUserId;
+		UE_LOG(LogFight, Log, TEXT("EOS: logged in as %s"), *FFightEosTransport::KeyOf(Self->Me));
 		return;
 	}
 	if (Data->ResultCode == EOS_EResult::EOS_InvalidUser)
@@ -335,40 +323,94 @@ void EOS_CALL FFightEos::OnLogin(const EOS_Connect_LoginCallbackInfo* Data)
 		EOS_Connect_CreateUserOptions Options = {};
 		Options.ApiVersion = EOS_CONNECT_CREATEUSER_API_LATEST;
 		Options.ContinuanceToken = Data->ContinuanceToken;
-		EOS_Connect_CreateUser(EOS_Platform_GetConnectInterface(Self->Handle), &Options, Self, &FFightEos::OnUserCreated);
+		EOS_Connect_CreateUser(EOS_Platform_GetConnectInterface(Self->Handle), &Options, Self, &FFightEosPlatform::OnUserCreated);
 		return;
 	}
 	Self->Fail(FString::Printf(TEXT("login failed (%s)"), *ResultText(Data->ResultCode)));
 }
 
-void EOS_CALL FFightEos::OnUserCreated(const EOS_Connect_CreateUserCallbackInfo* Data)
+void EOS_CALL FFightEosPlatform::OnUserCreated(const EOS_Connect_CreateUserCallbackInfo* Data)
 {
-	FFightEos* Self = Alive(Data->ClientData);
-	if (!Self) return;
+	if (!GLive.Contains(Data->ClientData)) return;
+	FFightEosPlatform* Self = static_cast<FFightEosPlatform*>(Data->ClientData);
 	if (Data->ResultCode != EOS_EResult::EOS_Success)
 	{
 		Self->Fail(FString::Printf(TEXT("couldn't create a user (%s)"), *ResultText(Data->ResultCode)));
 		return;
 	}
-	Self->LoggedIn(Data->LocalUserId);
+	Self->Me = Data->LocalUserId;
 }
 
-void FFightEos::LoggedIn(EOS_ProductUserId User)
+void FFightEosPlatform::Shutdown()
 {
-	Me = User;
-	UE_LOG(LogFight, Log, TEXT("EOS: logged in as %s"), *FFightEosTransport::KeyOf(Me));
-	Transport = MakeUnique<FFightEosTransport>();
-	Transport->Begin(EOS_Platform_GetP2PInterface(Handle), Me);
-	if (Config.bHost) CreateLobby();
+	Platform.Reset();
+	Handle = nullptr;
+	Me = nullptr;
+	bStarted = false;
+}
+
+FString FFightEosPlatform::GetStatus() const
+{
+	if (HasFailed()) return FString::Printf(TEXT("Online error: %s"), *Error);
+	if (!bStarted) return FString();
+	return IsLoggedIn() ? TEXT("Online") : TEXT("Logging in ...");
+}
+
+// ---------------------------------------------------------------- lobby
+
+FFightEosLobby::FFightEosLobby(FFightEosPlatform& InPlatform) : Platform(InPlatform)
+{
+	GLive.Add(this);
+}
+
+FFightEosLobby::~FFightEosLobby()
+{
+	Shutdown();
+	GLive.Remove(this);
+}
+
+FFightEosLobby* FFightEosLobby::Alive(void* ClientData)
+{
+	return GLive.Contains(ClientData) ? static_cast<FFightEosLobby*>(ClientData) : nullptr;
+}
+
+EOS_HLobby FFightEosLobby::Lobbies() const
+{
+	return EOS_Platform_GetLobbyInterface(Platform.GetHandle());
+}
+
+void FFightEosLobby::Fail(const FString& Why)
+{
+	Error = Why;
+	Step = EStep::Failed;
+	UE_LOG(LogFight, Error, TEXT("EOS lobby: %s"), *Why);
+}
+
+void FFightEosLobby::Begin(const FConfig& InConfig)
+{
+	Config = InConfig;
+	Bucket = Utf8(Config.Bucket);
+	Step = EStep::WaitingForLogin; // Tick takes it from here once the platform is logged in
+}
+
+void FFightEosLobby::Start()
+{
+	if (Config.bTransport)
+	{
+		Transport = MakeUnique<FFightEosTransport>();
+		Transport->Begin(EOS_Platform_GetP2PInterface(Platform.GetHandle()), Platform.GetUser());
+	}
+	SearchTime = 0.f;
+	if (Config.Join == EJoin::Host) CreateLobby();
 	else Search();
 }
 
-void FFightEos::CreateLobby()
+void FFightEosLobby::CreateLobby()
 {
 	Step = EStep::CreatingLobby;
 	EOS_Lobby_CreateLobbyOptions Options = {};
 	Options.ApiVersion = EOS_LOBBY_CREATELOBBY_API_LATEST;
-	Options.LocalUserId = Me;
+	Options.LocalUserId = Platform.GetUser();
 	Options.MaxLobbyMembers = static_cast<uint32_t>(FMath::Clamp(Config.MaxMembers, 2, fc::net::kMaxPeers));
 	Options.PermissionLevel = EOS_ELobbyPermissionLevel::EOS_LPL_PUBLICADVERTISED;
 	Options.bPresenceEnabled = EOS_FALSE;
@@ -377,36 +419,47 @@ void FFightEos::CreateLobby()
 	Options.bDisableHostMigration = EOS_TRUE; // the host only matters until the match starts
 	Options.bEnableRTCRoom = EOS_FALSE;
 	Options.bEnableJoinById = EOS_TRUE;       // lobby codes
-	EOS_Lobby_CreateLobby(EOS_Platform_GetLobbyInterface(Handle), &Options, this, &FFightEos::OnLobbyCreated);
+	EOS_Lobby_CreateLobby(Lobbies(), &Options, this, &FFightEosLobby::OnLobbyCreated);
 }
 
-void EOS_CALL FFightEos::OnLobbyCreated(const EOS_Lobby_CreateLobbyCallbackInfo* Data)
+void EOS_CALL FFightEosLobby::OnLobbyCreated(const EOS_Lobby_CreateLobbyCallbackInfo* Data)
 {
-	FFightEos* Self = Alive(Data->ClientData);
+	FFightEosLobby* Self = Alive(Data->ClientData);
 	if (!Self) return;
 	if (Data->ResultCode != EOS_EResult::EOS_Success)
 	{
 		Self->Fail(FString::Printf(TEXT("couldn't create a lobby (%s)"), *ResultText(Data->ResultCode)));
 		return;
 	}
-	Self->LobbyId = UTF8_TO_TCHAR(Data->LobbyId);
-	Self->Transport->SetDescription(FString::Printf(TEXT("lobby code %s"), *Self->LobbyId));
-	Self->Transport->SetAcceptNewPeers(true);
-	Self->Step = EStep::Ready;
-	UE_LOG(LogFight, Log, TEXT("EOS: lobby %s is open"), *Self->LobbyId);
+	Self->BecomeReady(Data->LobbyId, true);
 }
 
-void FFightEos::Search()
+void FFightEosLobby::BecomeReady(const char* Id, bool bAsHost)
+{
+	LobbyId = UTF8_TO_TCHAR(Id);
+	bHosting = bAsHost;
+	Step = EStep::Ready;
+	MemberCount = 1;
+	if (Transport)
+	{
+		Transport->SetDescription(FString::Printf(TEXT("lobby code %s"), *LobbyId));
+		if (bAsHost) Transport->SetAcceptNewPeers(true);
+		else Transport->SetPeer(0, PendingHost); // the host is peer 0, everyone else comes with the Start packet
+	}
+	UE_LOG(LogFight, Log, TEXT("EOS: %s lobby %s"), bAsHost ? TEXT("opened") : TEXT("joined"), *LobbyId);
+	Refresh();
+}
+
+void FFightEosLobby::Search()
 {
 	Step = EStep::Searching;
-	EOS_HLobby Lobby = EOS_Platform_GetLobbyInterface(Handle);
 	if (SearchHandle) EOS_LobbySearch_Release(SearchHandle);
 	SearchHandle = nullptr;
 
 	EOS_Lobby_CreateLobbySearchOptions Create = {};
 	Create.ApiVersion = EOS_LOBBY_CREATELOBBYSEARCH_API_LATEST;
 	Create.MaxResults = 20;
-	if (EOS_Lobby_CreateLobbySearch(Lobby, &Create, &SearchHandle) != EOS_EResult::EOS_Success)
+	if (EOS_Lobby_CreateLobbySearch(Lobbies(), &Create, &SearchHandle) != EOS_EResult::EOS_Success)
 	{
 		Fail(TEXT("couldn't start a lobby search"));
 		return;
@@ -436,20 +489,24 @@ void FFightEos::Search()
 
 	EOS_LobbySearch_FindOptions Find = {};
 	Find.ApiVersion = EOS_LOBBYSEARCH_FIND_API_LATEST;
-	Find.LocalUserId = Me;
-	EOS_LobbySearch_Find(SearchHandle, &Find, this, &FFightEos::OnSearchDone);
+	Find.LocalUserId = Platform.GetUser();
+	EOS_LobbySearch_Find(SearchHandle, &Find, this, &FFightEosLobby::OnSearchDone);
 }
 
-void EOS_CALL FFightEos::OnSearchDone(const EOS_LobbySearch_FindCallbackInfo* Data)
+void EOS_CALL FFightEosLobby::OnSearchDone(const EOS_LobbySearch_FindCallbackInfo* Data)
 {
-	FFightEos* Self = Alive(Data->ClientData);
+	FFightEosLobby* Self = Alive(Data->ClientData);
 	if (!Self || !Self->SearchHandle) return;
 	Self->RetryTimer = SearchRetrySeconds;
-	if (Data->ResultCode != EOS_EResult::EOS_Success) return; // "not found" lands here too, just look again
 
-	EOS_LobbySearch_GetSearchResultCountOptions CountOptions = {};
-	CountOptions.ApiVersion = EOS_LOBBYSEARCH_GETSEARCHRESULTCOUNT_API_LATEST;
-	const uint32_t Count = EOS_LobbySearch_GetSearchResultCount(Self->SearchHandle, &CountOptions);
+	const uint32_t Count = [&]
+	{
+		if (Data->ResultCode != EOS_EResult::EOS_Success) return 0u; // "not found" lands here too
+		EOS_LobbySearch_GetSearchResultCountOptions CountOptions = {};
+		CountOptions.ApiVersion = EOS_LOBBYSEARCH_GETSEARCHRESULTCOUNT_API_LATEST;
+		return EOS_LobbySearch_GetSearchResultCount(Self->SearchHandle, &CountOptions);
+	}();
+
 	for (uint32_t i = 0; i < Count; ++i)
 	{
 		EOS_LobbySearch_CopySearchResultByIndexOptions CopyOptions = {};
@@ -479,16 +536,19 @@ void EOS_CALL FFightEos::OnSearchDone(const EOS_LobbySearch_FindCallbackInfo* Da
 		EOS_Lobby_JoinLobbyOptions Join = {};
 		Join.ApiVersion = EOS_LOBBY_JOINLOBBY_API_LATEST;
 		Join.LobbyDetailsHandle = Details;
-		Join.LocalUserId = Self->Me;
+		Join.LocalUserId = Self->Platform.GetUser();
 		Join.bPresenceEnabled = EOS_FALSE;
-		EOS_Lobby_JoinLobby(EOS_Platform_GetLobbyInterface(Self->Handle), &Join, Self, &FFightEos::OnJoined);
+		EOS_Lobby_JoinLobby(Self->Lobbies(), &Join, Self, &FFightEosLobby::OnJoined);
 		return;
 	}
+
+	// nothing open: quick match gives up looking at some point and hosts instead
+	if (Self->Config.Join == EJoin::Auto && Self->SearchTime >= Self->Config.AutoSearchSeconds) Self->CreateLobby();
 }
 
-void EOS_CALL FFightEos::OnJoined(const EOS_Lobby_JoinLobbyCallbackInfo* Data)
+void EOS_CALL FFightEosLobby::OnJoined(const EOS_Lobby_JoinLobbyCallbackInfo* Data)
 {
-	FFightEos* Self = Alive(Data->ClientData);
+	FFightEosLobby* Self = Alive(Data->ClientData);
 	if (!Self) return;
 	if (Self->PendingJoin) EOS_LobbyDetails_Release(Self->PendingJoin);
 	Self->PendingJoin = nullptr;
@@ -500,33 +560,113 @@ void EOS_CALL FFightEos::OnJoined(const EOS_Lobby_JoinLobbyCallbackInfo* Data)
 		Self->RetryTimer = 1.f;
 		return;
 	}
-	Self->LobbyId = UTF8_TO_TCHAR(Data->LobbyId);
-	// the host is peer 0, everyone else comes with the Start packet
-	Self->Transport->SetPeer(0, Self->PendingHost);
-	Self->Transport->SetDescription(FString::Printf(TEXT("lobby code %s"), *Self->LobbyId));
-	Self->Step = EStep::Ready;
-	UE_LOG(LogFight, Log, TEXT("EOS: joined lobby %s"), *Self->LobbyId);
+	Self->BecomeReady(Data->LobbyId, false);
 }
 
-void FFightEos::Tick(float DeltaSeconds)
+void FFightEosLobby::Tick(float DeltaSeconds)
 {
-	// the SDK manager ticks the platform itself, we only retry searches
-	if (Step != EStep::Searching || RetryTimer <= 0.f) return;
-	RetryTimer -= DeltaSeconds;
-	if (RetryTimer <= 0.f) Search();
+	// the SDK manager ticks the platform itself, we only drive our own steps
+	switch (Step)
+	{
+	case EStep::WaitingForLogin:
+		if (Platform.HasFailed()) Fail(TEXT("not logged in"));
+		else if (Platform.IsLoggedIn()) Start();
+		break;
+	case EStep::Searching:
+		SearchTime += DeltaSeconds;
+		if (RetryTimer > 0.f && (RetryTimer -= DeltaSeconds) <= 0.f) Search();
+		break;
+	case EStep::Ready:
+		if ((RefreshTimer -= DeltaSeconds) <= 0.f) Refresh();
+		break;
+	default:
+		break;
+	}
 }
 
-void FFightEos::LockLobby()
+// Reads member count and the host's attributes from our local copy of the lobby,
+// which EOS keeps up to date for members.
+void FFightEosLobby::Refresh()
 {
-	if (!Config.bHost || LobbyId.IsEmpty() || !Handle) return;
-	EOS_HLobby Lobby = EOS_Platform_GetLobbyInterface(Handle);
+	RefreshTimer = 1.f;
+	const std::string Id = Utf8(LobbyId);
+	EOS_Lobby_CopyLobbyDetailsHandleOptions Options = {};
+	Options.ApiVersion = EOS_LOBBY_COPYLOBBYDETAILSHANDLE_API_LATEST;
+	Options.LobbyId = Id.c_str();
+	Options.LocalUserId = Platform.GetUser();
+	EOS_HLobbyDetails Details = nullptr;
+	if (EOS_Lobby_CopyLobbyDetailsHandle(Lobbies(), &Options, &Details) != EOS_EResult::EOS_Success) return;
+
+	EOS_LobbyDetails_GetMemberCountOptions CountOptions = {};
+	CountOptions.ApiVersion = EOS_LOBBYDETAILS_GETMEMBERCOUNT_API_LATEST;
+	MemberCount = static_cast<int32>(EOS_LobbyDetails_GetMemberCount(Details, &CountOptions));
+
+	if (!bHosting)
+	{
+		EOS_LobbyDetails_GetAttributeCountOptions AttrCount = {};
+		AttrCount.ApiVersion = EOS_LOBBYDETAILS_GETATTRIBUTECOUNT_API_LATEST;
+		const uint32_t Count = EOS_LobbyDetails_GetAttributeCount(Details, &AttrCount);
+		for (uint32_t i = 0; i < Count; ++i)
+		{
+			EOS_LobbyDetails_CopyAttributeByIndexOptions Copy = {};
+			Copy.ApiVersion = EOS_LOBBYDETAILS_COPYATTRIBUTEBYINDEX_API_LATEST;
+			Copy.AttrIndex = i;
+			EOS_Lobby_Attribute* Attribute = nullptr;
+			if (EOS_LobbyDetails_CopyAttributeByIndex(Details, &Copy, &Attribute) != EOS_EResult::EOS_Success || !Attribute) continue;
+			if (Attribute->Data && Attribute->Data->ValueType == EOS_EAttributeType::EOS_AT_STRING)
+				Attributes.Add(UTF8_TO_TCHAR(Attribute->Data->Key), UTF8_TO_TCHAR(Attribute->Data->Value.AsUtf8));
+			EOS_Lobby_Attribute_Release(Attribute);
+		}
+	}
+	EOS_LobbyDetails_Release(Details);
+}
+
+FString FFightEosLobby::GetAttribute(const FString& Key) const
+{
+	const FString* Value = Attributes.Find(Key);
+	return Value ? *Value : FString();
+}
+
+void FFightEosLobby::SetAttribute(const FString& Key, const FString& Value)
+{
+	if (!bHosting || LobbyId.IsEmpty()) return;
+	Attributes.Add(Key, Value);
+	const std::string Id = Utf8(LobbyId), K = Utf8(Key), V = Utf8(Value);
+	EOS_Lobby_UpdateLobbyModificationOptions ModOptions = {};
+	ModOptions.ApiVersion = EOS_LOBBY_UPDATELOBBYMODIFICATION_API_LATEST;
+	ModOptions.LocalUserId = Platform.GetUser();
+	ModOptions.LobbyId = Id.c_str();
+	EOS_HLobbyModification Modification = nullptr;
+	if (EOS_Lobby_UpdateLobbyModification(Lobbies(), &ModOptions, &Modification) != EOS_EResult::EOS_Success) return;
+
+	EOS_Lobby_AttributeData Data = {};
+	Data.ApiVersion = EOS_LOBBY_ATTRIBUTEDATA_API_LATEST;
+	Data.Key = K.c_str();
+	Data.Value.AsUtf8 = V.c_str();
+	Data.ValueType = EOS_EAttributeType::EOS_AT_STRING;
+	EOS_LobbyModification_AddAttributeOptions Add = {};
+	Add.ApiVersion = EOS_LOBBYMODIFICATION_ADDATTRIBUTE_API_LATEST;
+	Add.Attribute = &Data;
+	Add.Visibility = EOS_ELobbyAttributeVisibility::EOS_LAT_PUBLIC;
+	EOS_LobbyModification_AddAttribute(Modification, &Add);
+
+	EOS_Lobby_UpdateLobbyOptions Update = {};
+	Update.ApiVersion = EOS_LOBBY_UPDATELOBBY_API_LATEST;
+	Update.LobbyModificationHandle = Modification;
+	EOS_Lobby_UpdateLobby(Lobbies(), &Update, this, &FFightEosLobby::OnLobbyUpdated);
+	EOS_LobbyModification_Release(Modification);
+}
+
+void FFightEosLobby::Lock()
+{
+	if (!bHosting || LobbyId.IsEmpty()) return;
 	const std::string Id = Utf8(LobbyId);
 	EOS_Lobby_UpdateLobbyModificationOptions ModOptions = {};
 	ModOptions.ApiVersion = EOS_LOBBY_UPDATELOBBYMODIFICATION_API_LATEST;
-	ModOptions.LocalUserId = Me;
+	ModOptions.LocalUserId = Platform.GetUser();
 	ModOptions.LobbyId = Id.c_str();
 	EOS_HLobbyModification Modification = nullptr;
-	if (EOS_Lobby_UpdateLobbyModification(Lobby, &ModOptions, &Modification) != EOS_EResult::EOS_Success) return;
+	if (EOS_Lobby_UpdateLobbyModification(Lobbies(), &ModOptions, &Modification) != EOS_EResult::EOS_Success) return;
 
 	EOS_LobbyModification_SetPermissionLevelOptions Permission = {};
 	Permission.ApiVersion = EOS_LOBBYMODIFICATION_SETPERMISSIONLEVEL_API_LATEST;
@@ -536,32 +676,32 @@ void FFightEos::LockLobby()
 	EOS_Lobby_UpdateLobbyOptions Update = {};
 	Update.ApiVersion = EOS_LOBBY_UPDATELOBBY_API_LATEST;
 	Update.LobbyModificationHandle = Modification;
-	EOS_Lobby_UpdateLobby(Lobby, &Update, this, &FFightEos::OnLobbyUpdated);
+	EOS_Lobby_UpdateLobby(Lobbies(), &Update, this, &FFightEosLobby::OnLobbyUpdated);
 	EOS_LobbyModification_Release(Modification);
 }
 
-void EOS_CALL FFightEos::OnLobbyUpdated(const EOS_Lobby_UpdateLobbyCallbackInfo* Data)
+void EOS_CALL FFightEosLobby::OnLobbyUpdated(const EOS_Lobby_UpdateLobbyCallbackInfo* Data)
 {
 	if (Data->ResultCode != EOS_EResult::EOS_Success)
-		UE_LOG(LogFight, Warning, TEXT("EOS: couldn't lock the lobby (%s)"), *ResultText(Data->ResultCode));
+		UE_LOG(LogFight, Warning, TEXT("EOS: lobby update failed (%s)"), *ResultText(Data->ResultCode));
 }
 
-void EOS_CALL FFightEos::OnLeft(const EOS_Lobby_LeaveLobbyCallbackInfo*)
+void EOS_CALL FFightEosLobby::OnLeft(const EOS_Lobby_LeaveLobbyCallbackInfo*)
 {
 	// nothing to do, we're on our way out anyway
 }
 
-void FFightEos::Shutdown()
+void FFightEosLobby::Shutdown()
 {
-	if (Handle && Me && !LobbyId.IsEmpty())
+	if (Platform.GetHandle() && Platform.GetUser() && !LobbyId.IsEmpty())
 	{
 		// best effort, EOS also drops members that stop answering
 		const std::string Id = Utf8(LobbyId);
 		EOS_Lobby_LeaveLobbyOptions Leave = {};
 		Leave.ApiVersion = EOS_LOBBY_LEAVELOBBY_API_LATEST;
-		Leave.LocalUserId = Me;
+		Leave.LocalUserId = Platform.GetUser();
 		Leave.LobbyId = Id.c_str();
-		EOS_Lobby_LeaveLobby(EOS_Platform_GetLobbyInterface(Handle), &Leave, nullptr, &FFightEos::OnLeft);
+		EOS_Lobby_LeaveLobby(Lobbies(), &Leave, nullptr, &FFightEosLobby::OnLeft);
 	}
 	LobbyId.Reset();
 	if (SearchHandle) EOS_LobbySearch_Release(SearchHandle);
@@ -569,21 +709,19 @@ void FFightEos::Shutdown()
 	if (PendingJoin) EOS_LobbyDetails_Release(PendingJoin);
 	PendingJoin = nullptr;
 	Transport.Reset();
-	Platform.Reset();
-	Handle = nullptr;
-	Me = nullptr;
-	if (Step != EStep::Failed) Step = EStep::Off;
+	bHosting = false;
+	if (Step != EStep::Failed) Step = EStep::Closed;
 }
 
-FString FFightEos::GetStatus() const
+FString FFightEosLobby::GetStatus() const
 {
 	switch (Step)
 	{
-	case EStep::LoggingIn: return TEXT("Logging in ...");
-	case EStep::Searching: return TEXT("Looking for a lobby ...");
+	case EStep::WaitingForLogin: return Platform.HasFailed() ? Platform.GetStatus() : FString(TEXT("Logging in ..."));
+	case EStep::Searching: return TEXT("Looking for players ...");
 	case EStep::CreatingLobby: return TEXT("Opening a lobby ...");
 	case EStep::JoiningLobby: return TEXT("Joining ...");
-	case EStep::Ready: return Transport ? Transport->Describe() : FString();
+	case EStep::Ready: return Transport ? Transport->Describe() : FString::Printf(TEXT("code %s"), *LobbyId);
 	case EStep::Failed: return FString::Printf(TEXT("Online error: %s"), *Error);
 	default: return FString();
 	}

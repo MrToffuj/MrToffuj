@@ -4,6 +4,7 @@
 #include "FightInput.h"
 #include "FightEos.h"
 #include "FightNet.h"
+#include "FightOnline.h"
 #include "FightTypes.h"
 #include "GameFramework/Actor.h"
 #include "fightcore/Net.h"
@@ -60,6 +61,20 @@ public:
 	bool IsOnline() const { return NetMode != EFightNetMode::Offline; }
 	// Lobby progress, lag spikes, desyncs. Empty when there's nothing to say.
 	FString GetNetStatus() const;
+
+	// lobby screen
+	bool IsInLobby() const { return IsOnline() && !Peer; }
+	bool IsLobbyHost() const;
+	int32 GetLobbyPlayers() const;
+	int32 GetLobbyTarget() const;
+	float GetWaitSeconds() const { return WaitSeconds; }
+	float GetBotOfferSeconds() const;
+	bool CanFillWithBots() const;
+	// Host: start now, bots take the empty slots. Anyone else: play this mode offline.
+	void FillWithBots();
+
+	// The pause menu is up: player 1 stands still, an offline match stops.
+	void SetMenuOpen(bool bOpen);
 	float GetImpactFlash() const { return ImpactFlash; }
 	int32 GetLocalPlayerCount() const { return LocalPlayers; }
 
@@ -84,6 +99,7 @@ private:
 	void PollLobby(float DeltaSeconds);
 	bool BeginOnlineMatch(const fc::net::LobbyConfig& Config, uint8 LocalPeer);
 	void SimulateOnlineFrame();
+	fc::FrameInput BuildInput(int32 LocalIndex) const;
 	void Rematch();
 	void SpawnArena();
 	void SpawnFighterVisuals();
@@ -100,11 +116,16 @@ private:
 
 	TUniquePtr<fc::Session> Session;
 
+	FFightMatchRequest Request; // what the menu picked
+	bool bMenuOpen = false;
+
 	// online
 	EFightNetMode NetMode = EFightNetMode::Offline;
+	float WaitSeconds = 0.f;
+	bool bFillRequested = false;
 	// one of these carries the packets, Link points at whichever it is
 	TUniquePtr<FFightUdpTransport> Udp;
-	TUniquePtr<FFightEos> Eos;
+	TUniquePtr<FFightEosLobby> MatchLobby;
 	IFightTransport* Link = nullptr;
 	std::vector<fc::net::PlayerRequest> PendingRequests; // until EOS has a lobby
 	TUniquePtr<fc::net::LobbyHost> LobbyHost;

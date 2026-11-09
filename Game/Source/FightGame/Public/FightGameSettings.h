@@ -139,16 +139,17 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Online|EOS") FString EosClientSecret;
 	// Join only: a lobby code the host shares. Empty = join any open lobby for this mode.
 	UPROPERTY(Config, EditAnywhere, Category = "Online|EOS") FString LobbyCode;
-	// Host only: start once this many consoles (host included) are in, bots take the rest.
-	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "1", ClampMax = "20")) int32 WaitForConsoles = 2;
-	// Host only: start anyway after this long, 0 waits forever.
-	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "0")) float LobbyTimeoutSeconds = 60.f;
+	// A lobby starts once every fighter slot has a human. After this long without that,
+	// the lobby screen offers to fill the rest with bots.
+	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "0")) float BotFillOfferSeconds = 300.f;
 	// Frames between pressing and seeing it happen. 2 hides most rollbacks on a normal connection.
 	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "0", ClampMax = "6")) int32 InputDelay = 2;
 
 	// Folder (relative to the project) that is scanned for */mod.json at startup
 	UPROPERTY(Config, EditAnywhere, Category = "Mods") FString ModsFolder = TEXT("Mods");
 
+	// Editor convenience: skip the menus and start the match described here right away.
+	UPROPERTY(Config, EditAnywhere, Category = "Debug") bool bSkipMenu = false;
 	UPROPERTY(Config, EditAnywhere, Category = "Debug") bool bDrawHitboxes = true;
 	UPROPERTY(Config, EditAnywhere, Category = "Debug") bool bShowFrameInfo = true;
 };

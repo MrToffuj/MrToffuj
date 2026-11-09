@@ -337,6 +337,12 @@ int LobbyHost::peerCount() const {
     return n;
 }
 
+int LobbyHost::playerCount() const {
+    int n = 0;
+    for (const auto& p : peers_) n += static_cast<int>(p.size());
+    return n;
+}
+
 void LobbyHost::resendStart() {
     if (startBody_.empty()) return;
     for (size_t p = 1; p < peers_.size(); ++p)

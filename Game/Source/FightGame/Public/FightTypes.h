@@ -20,7 +20,8 @@ enum class EFightNetMode : uint8
 {
 	Offline UMETA(DisplayName = "Offline (local only)"),
 	Host UMETA(DisplayName = "Host a P2P lobby"),
-	Join UMETA(DisplayName = "Join a P2P lobby")
+	Join UMETA(DisplayName = "Join a P2P lobby"),
+	QuickMatch UMETA(DisplayName = "Quick match (find a lobby, host if there is none)")
 };
 
 UENUM(BlueprintType)

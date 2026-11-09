@@ -87,14 +87,20 @@ Beide Backends implementieren `IFightTransport` (`FightNet.h`). Der Director mer
 
 ### EOS (Standard fürs Internet)
 
-`FFightEos` (`Game/Source/FightGame/Public/FightEos.h`) macht vier Schritte:
+`FightEos.h` hat drei Teile:
+- `FFightEosPlatform`: Login, einmal pro Spielstart, liegt im Subsystem `UFightOnline`.
+- `FFightEosLobby`: eine Match- oder Party-Lobby.
+- `FFightEosTransport`: P2P.
+
+Ablauf:
 
 1. **Login über EOS Connect mit Device-ID:**
    - Kein Epic-Account, kein Passwort. Die ID hängt an der Installation.
    - Konsolen loggen sich stattdessen mit ihrem Plattform-Token ein (PSN, Xbox, Nintendo). Das kommt aus
      den Plattform-SDKs und geht nur auf Devkits.
 2. **Lobby:**
-   - Der Host öffnet eine öffentliche EOS-Lobby.
+   - **Quick Match:** 15 s nach einer offenen Lobby suchen. Gibt es keine, öffnet man selbst eine und wird
+     Host.
    - Joiner suchen eine offene Lobby im selben **Bucket** (`carnage:<Protokoll>:<Modus>:<Mod-Hash>`). Wer
      eine andere Version, andere Mods oder einen anderen Modus hat, findet die Lobby gar nicht erst.
    - Alternativ joint man gezielt per **Lobby-Code**: Der Host sieht ihn im HUD und schickt ihn Freunden.
@@ -127,16 +133,28 @@ Die Client-Credentials einer Game-Client-Policy dürfen mit dem Spiel ausgeliefe
   - Der Host vergibt Peer-Ids in Ankunftsreihenfolge.
   - Clients tragen nach dem Start die Adressen der anderen ein.
 - Einstellungen unter **Project Settings → Game → Online:**
-  - `NetMode` (Offline / Host / Join), `Backend` (EOS / Direct IP), `DisplayName`
-  - EOS: IDs + optional `LobbyCode`
+  - `Backend` (EOS / Direct IP)
+  - EOS: IDs
   - Direct IP: `HostAddress`, `Port`
-  - `WaitForConsoles` (Start, sobald so viele Konsolen da sind)
-  - `LobbyTimeoutSeconds` (danach startet es trotzdem, der Rest sind Bots)
-  - `InputDelay`
+  - `BotFillOfferSeconds` (Standard 300)
+- Spieler wählen Modus, offline/online und Party im Menü (siehe [MENUS.md](MENUS.md)).
+  Name und Input-Delay stehen in den Settings.
+- **Start einer Lobby:**
+  - Sie startet, sobald jeder Kämpfer-Slot einen Menschen hat (Splitscreen zählt jeden Spieler).
+  - Nach 5 Minuten bietet der Lobby-Screen an, mit Bots aufzufüllen.
+  - Wer in einer fremden Lobby wartet, kann stattdessen offline gegen Bots spielen.
 - `AFightDirector` nutzt online `PeerSession` statt `Session`. Lokale Spieler sitzen auf den Slots, die der
   Host vergibt (`GetLocalFighter`). Splitscreen online geht also auch.
 - Outfits sind rein kosmetisch und bleiben lokal: Andere sehen dich im Standard-Look. Die Übertragung über
   die Lobby kommt als nächster Schritt.
+
+### Mit Freunden spielen (Party)
+
+- Unter *Play → Play with a friend* erstellt einer eine Party und bekommt einen Code. Der Freund gibt den Code
+  ein. Die Party ist eine kleine EOS-Lobby mit max. 4 Spielern.
+- Der Leader wählt Modus → Online. Er hostet dann die Match-Lobby und schreibt ihren Code als Attribut in die
+  Party-Lobby.
+- Die Mitglieder sehen das Attribut im Menü und joinen automatisch. Fremde füllen den Rest über Matchmaking.
 
 ## EOS vs. Steam
 
@@ -154,7 +172,7 @@ Die Client-Credentials einer Game-Client-Policy dürfen mit dem Spiel ausgeliefe
 
 1. In der Engine kompilieren und mit zwei Rechnern über EOS testen
 2. Konsolen-Login (Plattform-Tokens) auf Devkits
-3. Lobby-Menü im Spiel statt Project Settings
+3. Echtes Menü-Design (die Platzhalter sind weiß)
 4. Outfits über die Lobby mitschicken
 5. Bei Desync: Snapshot vom Host (~11 KB) statt nur Meldung
 6. Join-in-Progress für Brawl (Neuer übernimmt einen Bot-Slot + Snapshot)
