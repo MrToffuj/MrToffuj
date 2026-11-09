@@ -404,7 +404,7 @@ void AFightDirector::SpawnFighterVisuals()
 void AFightDirector::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (LobbyHost || LobbyClient) PollLobby(DeltaSeconds);
+	if (LobbyHost || LobbyClient || (Eos && !Peer)) PollLobby(DeltaSeconds);
 	if (!HasSession()) return;
 
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
@@ -730,35 +730,84 @@ void AFightDirector::StartOnline()
 	for (int32 i = 0; i < LocalPlayers; ++i)
 		Requests.push_back(ToRequest(S->Loadouts.IsValidIndex(i) ? S->Loadouts[i] : FFightLoadout()));
 
-	Transport = MakeUnique<FFightUdpTransport>();
 	const bool bHost = NetMode == EFightNetMode::Host;
-	if (!Transport->Open(bHost ? S->Port : 0))
+	LobbyTime = 0.f;
+
+	if (S->Backend == EFightNetBackend::Eos)
+	{
+		// Matchmaking first, the fc::net handshake starts once we sit in an EOS lobby.
+		// The bucket keeps different builds, mod sets and modes apart.
+		FFightEos::FConfig Config;
+		Config.ProductId = S->EosProductId;
+		Config.SandboxId = S->EosSandboxId;
+		Config.DeploymentId = S->EosDeploymentId;
+		Config.ClientId = S->EosClientId;
+		Config.ClientSecret = S->EosClientSecret;
+		Config.DisplayName = S->DisplayName;
+		Config.LobbyCode = S->LobbyCode.TrimStartAndEnd();
+		Config.bHost = bHost;
+		Config.MaxMembers = ToRules(*S).fighters; // one console has at least one fighter
+		Config.Bucket = FString::Printf(TEXT("carnage:%u:%d:%016llx"), static_cast<uint32>(fc::net::kProtocolVersion), static_cast<int32>(S->Mode),
+			static_cast<unsigned long long>(fc::Registry::instance().contentHash()));
+		PendingRequests = std::move(Requests);
+		Eos = MakeUnique<FFightEos>();
+		Eos->Begin(Config);
+		return;
+	}
+
+	Udp = MakeUnique<FFightUdpTransport>();
+	if (!Udp->Open(bHost ? S->Port : 0))
 	{
 		NetError = TEXT("Couldn't open a UDP socket");
 		return;
 	}
+	Link = Udp.Get();
 	if (bHost)
 	{
-		Transport->SetAcceptNewPeers(true);
-		LobbyHost = MakeUnique<fc::net::LobbyHost>(*Transport, std::move(Requests));
-		UE_LOG(LogFight, Log, TEXT("Hosting on port %d, waiting for %d consoles"), Transport->GetBoundPort(), S->WaitForConsoles);
+		Link->SetAcceptNewPeers(true);
+		LobbyHost = MakeUnique<fc::net::LobbyHost>(*Link, std::move(Requests));
+		UE_LOG(LogFight, Log, TEXT("Hosting on port %d, waiting for %d consoles"), Udp->GetBoundPort(), S->WaitForConsoles);
 	}
 	else
 	{
-		if (!Transport->SetPeer(0, S->HostAddress))
+		if (!Link->SetPeer(0, S->HostAddress))
 		{
 			NetError = FString::Printf(TEXT("Bad host address '%s'"), *S->HostAddress);
 			return;
 		}
-		LobbyClient = MakeUnique<fc::net::LobbyClient>(*Transport, std::move(Requests));
+		LobbyClient = MakeUnique<fc::net::LobbyClient>(*Link, std::move(Requests));
 		UE_LOG(LogFight, Log, TEXT("Joining %s"), *S->HostAddress);
 	}
-	LobbyTime = 0.f;
+}
+
+void AFightDirector::EndPlay(const EEndPlayReason::Type Reason)
+{
+	// the sessions hold references to the transport, so they go first
+	Peer.Reset();
+	LobbyHost.Reset();
+	LobbyClient.Reset();
+	Link = nullptr;
+	if (Eos) Eos->Shutdown();
+	Eos.Reset();
+	Udp.Reset();
+	Super::EndPlay(Reason);
 }
 
 void AFightDirector::PollLobby(float DeltaSeconds)
 {
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
+	if (Eos)
+	{
+		Eos->Tick(DeltaSeconds);
+		if (!Link && Eos->IsReady())
+		{
+			Link = Eos->GetTransport();
+			if (NetMode == EFightNetMode::Host) LobbyHost = MakeUnique<fc::net::LobbyHost>(*Link, std::move(PendingRequests));
+			else LobbyClient = MakeUnique<fc::net::LobbyClient>(*Link, std::move(PendingRequests));
+			LobbyTime = 0.f; // the wait for players starts now
+		}
+		if (!Link) return;
+	}
 	LobbyTime += DeltaSeconds;
 	LobbyPollTimer -= DeltaSeconds;
 	if (LobbyPollTimer > 0.f) return;
@@ -773,7 +822,7 @@ void AFightDirector::PollLobby(float DeltaSeconds)
 		// full mesh: the host told us where everyone else is
 		for (int32 p = 1; p < static_cast<int32>(Config.peerAddresses.size()); ++p)
 			if (p != Me && !Config.peerAddresses[p].empty())
-				Transport->SetPeer(static_cast<uint8>(p), UTF8_TO_TCHAR(Config.peerAddresses[p].c_str()));
+				Link->SetPeer(static_cast<uint8>(p), UTF8_TO_TCHAR(Config.peerAddresses[p].c_str()));
 		BeginOnlineMatch(Config, Me);
 		return;
 	}
@@ -792,9 +841,10 @@ void AFightDirector::PollLobby(float DeltaSeconds)
 	const bool bTimeout = S->LobbyTimeoutSeconds > 0.f && LobbyTime >= S->LobbyTimeoutSeconds;
 	if (!bFull && !bTimeout) return;
 
-	Transport->SetAcceptNewPeers(false);
+	Link->SetAcceptNewPeers(false);
+	if (Eos) Eos->LockLobby();
 	std::vector<std::string> Addresses;
-	for (const FString& A : Transport->GetPeerAddresses()) Addresses.push_back(ToStd(A));
+	for (const FString& A : Link->GetPeerAddresses()) Addresses.push_back(ToStd(A));
 	const fc::net::LobbyConfig Config = LobbyHost->start(ToMode(S->Mode), ToRules(*S), static_cast<uint8_t>(S->BotLevel),
 		static_cast<uint32_t>(FMath::Rand()), static_cast<uint8_t>(S->InputDelay), Addresses);
 	StartResends = 30; // 3 seconds
@@ -815,7 +865,7 @@ bool AFightDirector::BeginOnlineMatch(const fc::net::LobbyConfig& Config, uint8 
 	Lobby = Config;
 	OwnPeer = LocalPeer;
 	Round = 0;
-	Peer = MakeUnique<fc::net::PeerSession>(Lobby, OnlineSetup, OwnPeer, *Transport, Round);
+	Peer = MakeUnique<fc::net::PeerSession>(Lobby, OnlineSetup, OwnPeer, *Link, Round);
 
 	const std::vector<int>& Slots = Peer->localSlots();
 	LocalPlayers = FMath::Clamp(static_cast<int32>(Slots.size()), 1, MaxLocalPlayers);
@@ -867,7 +917,7 @@ void AFightDirector::SimulateOnlineFrame()
 
 void AFightDirector::Rematch()
 {
-	Peer = MakeUnique<fc::net::PeerSession>(Lobby, OnlineSetup, OwnPeer, *Transport, ++Round);
+	Peer = MakeUnique<fc::net::PeerSession>(Lobby, OnlineSetup, OwnPeer, *Link, ++Round);
 	bHasPrevious = false;
 	RoundOverFrames = 0;
 	bResultRecorded = false;
@@ -879,10 +929,11 @@ void AFightDirector::Rematch()
 FString AFightDirector::GetNetStatus() const
 {
 	if (!NetError.IsEmpty()) return NetError;
-	if (LobbyClient) return FString::Printf(TEXT("Joining %s ..."), *GetDefault<UFightGameSettings>()->HostAddress);
+	if (Eos && (!Link || Eos->GetStep() == FFightEos::EStep::Failed)) return Eos->GetStatus();
+	if (LobbyClient) return TEXT("Waiting for the host ...");
 	if (LobbyHost && !Peer)
-		return FString::Printf(TEXT("Lobby: %d / %d consoles  (port %d)"), LobbyHost->peerCount(),
-			GetDefault<UFightGameSettings>()->WaitForConsoles, Transport ? Transport->GetBoundPort() : 0);
+		return FString::Printf(TEXT("Lobby: %d / %d consoles  (%s)"), LobbyHost->peerCount(),
+			GetDefault<UFightGameSettings>()->WaitForConsoles, Link ? *Link->Describe() : TEXT(""));
 	if (!Peer) return FString();
 	if (Peer->desynced()) return TEXT("DESYNC - the consoles disagree, check that everyone has the same mods");
 	if (Peer->stalled()) return TEXT("Waiting for other players ...");

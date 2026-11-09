@@ -122,9 +122,23 @@ public:
 	// Peer to peer. No dedicated servers: the host only collects players and starts the
 	// match, after that every console talks to every other one directly.
 	UPROPERTY(Config, EditAnywhere, Category = "Online") EFightNetMode NetMode = EFightNetMode::Offline;
-	// Join only. "192.168.0.12:7777"
-	UPROPERTY(Config, EditAnywhere, Category = "Online") FString HostAddress = TEXT("127.0.0.1:7777");
-	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "1024", ClampMax = "65535")) int32 Port = 7777;
+	UPROPERTY(Config, EditAnywhere, Category = "Online") EFightNetBackend Backend = EFightNetBackend::Eos;
+	// Shown to other players in the lobby
+	UPROPERTY(Config, EditAnywhere, Category = "Online") FString DisplayName = TEXT("Player");
+
+	// Direct IP, join only. "192.168.0.12:7777"
+	UPROPERTY(Config, EditAnywhere, Category = "Online|Direct IP") FString HostAddress = TEXT("127.0.0.1:7777");
+	UPROPERTY(Config, EditAnywhere, Category = "Online|Direct IP", meta = (ClampMin = "1024", ClampMax = "65535")) int32 Port = 7777;
+
+	// From the Epic Developer Portal (dev.epicgames.com): Product Settings > SDK Download & Credentials.
+	// The client needs a policy that allows Connect, Lobbies and P2P ("Peer2Peer" preset).
+	UPROPERTY(Config, EditAnywhere, Category = "Online|EOS") FString EosProductId;
+	UPROPERTY(Config, EditAnywhere, Category = "Online|EOS") FString EosSandboxId;
+	UPROPERTY(Config, EditAnywhere, Category = "Online|EOS") FString EosDeploymentId;
+	UPROPERTY(Config, EditAnywhere, Category = "Online|EOS") FString EosClientId;
+	UPROPERTY(Config, EditAnywhere, Category = "Online|EOS") FString EosClientSecret;
+	// Join only: a lobby code the host shares. Empty = join any open lobby for this mode.
+	UPROPERTY(Config, EditAnywhere, Category = "Online|EOS") FString LobbyCode;
 	// Host only: start once this many consoles (host included) are in, bots take the rest.
 	UPROPERTY(Config, EditAnywhere, Category = "Online", meta = (ClampMin = "1", ClampMax = "20")) int32 WaitForConsoles = 2;
 	// Host only: start anyway after this long, 0 waits forever.

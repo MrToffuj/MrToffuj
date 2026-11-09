@@ -6,8 +6,9 @@ miteinander und niemand ist darauf angewiesen, dass wir Server betreiben.
 **Status:**
 - Fertig und getestet: Netcode (`FightCore/include/fightcore/Net.h`), Lobby-Handshake, Rollback über Netz,
   Zeitsync, Desync-Erkennung, Bot-Übernahme bei Disconnect und Rematch.
-- In Unreal eingebaut: UDP-Transport für LAN und Direkt-IP.
-- Noch offen: NAT-Durchdringung über EOS oder Steam.
+- In Unreal eingebaut: EOS fürs Internet (Login ohne Account, Lobby-Suche, NAT-Durchdringung, Relay)
+  und UDP für LAN/Direkt-IP.
+- Noch nicht in der Engine kompiliert: Hier läuft keine Unreal Engine und kein EOS-SDK.
 
 ## Warum P2P hier gut funktioniert
 
@@ -82,13 +83,53 @@ Bei echter Latenz kommen Acks schneller, dann ist es weniger.
 
 ## Unreal
 
+Beide Backends implementieren `IFightTransport` (`FightNet.h`). Der Director merkt nicht, welches läuft.
+
+### EOS (Standard fürs Internet)
+
+`FFightEos` (`Game/Source/FightGame/Public/FightEos.h`) macht vier Schritte:
+
+1. **Login über EOS Connect mit Device-ID:**
+   - Kein Epic-Account, kein Passwort. Die ID hängt an der Installation.
+   - Konsolen loggen sich stattdessen mit ihrem Plattform-Token ein (PSN, Xbox, Nintendo). Das kommt aus
+     den Plattform-SDKs und geht nur auf Devkits.
+2. **Lobby:**
+   - Der Host öffnet eine öffentliche EOS-Lobby.
+   - Joiner suchen eine offene Lobby im selben **Bucket** (`carnage:<Protokoll>:<Modus>:<Mod-Hash>`). Wer
+     eine andere Version, andere Mods oder einen anderen Modus hat, findet die Lobby gar nicht erst.
+   - Alternativ joint man gezielt per **Lobby-Code**: Der Host sieht ihn im HUD und schickt ihn Freunden.
+3. **Handshake:** Danach läuft der normale Hello/Start-Handshake von fc::net über EOS P2P.
+   Adressen sind Product-User-IDs.
+4. **Match-Start:** Der Host stellt die Lobby auf „nur Einladung“, damit niemand mehr reinplatzt.
+
+EOS P2P übernimmt NAT-Durchdringung und fällt auf Epics Relays zurück, wenn zwei Konsolen sich nicht direkt
+erreichen. Die Spieldaten laufen trotzdem nicht über unsere Server, wir haben keine.
+
+- Match-Pakete gehen unzuverlässig raus, weil der Netcode selbst wiederholt.
+- EOS-Pakete sind max. 1170 Byte groß. Nur der Start-Packet einer großen Lobby ist größer: Der geht
+  zerlegt über einen zuverlässigen Kanal.
+
+**Einrichten (einmalig, kostenlos):**
+
+1. Auf [dev.epicgames.com](https://dev.epicgames.com/portal) ein Produkt anlegen.
+2. Unter *Product Settings → Clients* einen Client anlegen, mit einer Policy, die Connect, Lobbies und P2P
+   erlaubt (Preset „Peer2Peer“).
+3. Product-, Sandbox-, Deployment-ID sowie Client-ID und -Secret eintragen unter
+   **Project Settings → Game → Online → EOS**.
+4. Falls der Login scheitert: Prüfen, ob die Client-Policy „Connect“ erlaubt. Device-ID braucht sonst keine Einrichtung.
+
+Die Client-Credentials einer Game-Client-Policy dürfen mit dem Spiel ausgeliefert werden, so ist EOS gedacht.
+
+### Direkt-IP (LAN)
+
 - `FFightUdpTransport` (`Game/Source/FightGame/Public/FightNet.h`):
   - UDP über das Sockets-Modul, non-blocking.
   - Der Host vergibt Peer-Ids in Ankunftsreihenfolge.
   - Clients tragen nach dem Start die Adressen der anderen ein.
 - Einstellungen unter **Project Settings → Game → Online:**
-  - `NetMode` (Offline / Host / Join)
-  - `HostAddress`, `Port`
+  - `NetMode` (Offline / Host / Join), `Backend` (EOS / Direct IP), `DisplayName`
+  - EOS: IDs + optional `LobbyCode`
+  - Direct IP: `HostAddress`, `Port`
   - `WaitForConsoles` (Start, sobald so viele Konsolen da sind)
   - `LobbyTimeoutSeconds` (danach startet es trotzdem, der Rest sind Bots)
   - `InputDelay`
@@ -97,16 +138,11 @@ Bei echter Latenz kommen Acks schneller, dann ist es weniger.
 - Outfits sind rein kosmetisch und bleiben lokal: Andere sehen dich im Standard-Look. Die Übertragung über
   die Lobby kommt als nächster Schritt.
 
-## Was man trotzdem braucht
+## EOS vs. Steam
 
-Direkt-IP klappt im LAN oder mit Port-Weiterleitung. Fürs Internet braucht man einen Weg, sich zu finden
-und durch Router (NAT) zu kommen:
-
-- **Matchmaking/Lobbys + NAT-Durchdringung:** EOS (Epic Online Services, kostenlos, Crossplay PC/Konsole)
-  oder Steam. Die vermitteln nur die Verbindung, die Spieldaten laufen weiter direkt zwischen den Peers.
-  Dafür reicht ein zweiter `fc::net::Transport` (EOS P2P bzw. Steam Networking Sockets). Der Netcode
-  darüber bleibt gleich.
-- **Relay als Notlösung:** Wenn zwei Peers sich gar nicht direkt erreichen, leiten EOS/Steam Pakete weiter.
+- **EOS** läuft auf PC und allen Konsolen inkl. Switch 2. Damit gibt es Crossplay, deshalb ist EOS Standard.
+- **Steam Networking Sockets** gehen nur für Steam-Spieler. Sie können später als dritter `IFightTransport`
+  für die Steam-Version dazukommen (gutes Relay-Netz, Einladungen übers Overlay).
 
 ## Sicherheit
 
@@ -116,8 +152,10 @@ und durch Router (NAT) zu kommen:
 
 ## Nächste Schritte
 
-1. EOS-Transport (Lobbys, NAT, Relay), Steam als Alternative
-2. Outfits über die Lobby mitschicken
-3. Bei Desync: Snapshot vom Host (~11 KB) statt nur Meldung
-4. Join-in-Progress für Brawl (Neuer übernimmt einen Bot-Slot + Snapshot)
-5. Host-Migration in der Lobby (im Match braucht man den Host nur für Disconnect-Entscheidungen)
+1. In der Engine kompilieren und mit zwei Rechnern über EOS testen
+2. Konsolen-Login (Plattform-Tokens) auf Devkits
+3. Lobby-Menü im Spiel statt Project Settings
+4. Outfits über die Lobby mitschicken
+5. Bei Desync: Snapshot vom Host (~11 KB) statt nur Meldung
+6. Join-in-Progress für Brawl (Neuer übernimmt einen Bot-Slot + Snapshot)
+7. Host-Migration in der Lobby (im Match braucht man den Host nur für Disconnect-Entscheidungen)

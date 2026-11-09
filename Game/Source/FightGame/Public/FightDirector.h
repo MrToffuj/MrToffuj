@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "FightInput.h"
+#include "FightEos.h"
 #include "FightNet.h"
 #include "FightTypes.h"
 #include "GameFramework/Actor.h"
@@ -43,6 +44,7 @@ public:
 	AFightDirector();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void Tick(float DeltaSeconds) override;
 
 	UPROPERTY(BlueprintAssignable, Category = "Fight")
@@ -100,7 +102,11 @@ private:
 
 	// online
 	EFightNetMode NetMode = EFightNetMode::Offline;
-	TUniquePtr<FFightUdpTransport> Transport;
+	// one of these carries the packets, Link points at whichever it is
+	TUniquePtr<FFightUdpTransport> Udp;
+	TUniquePtr<FFightEos> Eos;
+	IFightTransport* Link = nullptr;
+	std::vector<fc::net::PlayerRequest> PendingRequests; // until EOS has a lobby
 	TUniquePtr<fc::net::LobbyHost> LobbyHost;
 	TUniquePtr<fc::net::LobbyClient> LobbyClient;
 	TUniquePtr<fc::net::PeerSession> Peer;

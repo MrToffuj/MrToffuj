@@ -24,6 +24,13 @@ enum class EFightNetMode : uint8
 };
 
 UENUM(BlueprintType)
+enum class EFightNetBackend : uint8
+{
+	Eos UMETA(DisplayName = "EOS (internet, NAT punch-through)"),
+	DirectIp UMETA(DisplayName = "Direct IP (LAN / port forwarding)")
+};
+
+UENUM(BlueprintType)
 enum class EFightObjective : uint8
 {
 	None UMETA(DisplayName = "Free fight"),

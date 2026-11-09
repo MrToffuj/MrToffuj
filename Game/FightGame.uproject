@@ -14,5 +14,11 @@
 				"DeveloperSettings"
 			]
 		}
+	],
+	"Plugins": [
+		{
+			"Name": "EOSShared",
+			"Enabled": true
+		}
 	]
 }
