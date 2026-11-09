@@ -18,6 +18,7 @@ Design-Inhalte stehen in [GDD_KAMPFSYSTEM.md](GDD_KAMPFSYSTEM.md). Dieses Doc be
 | `include/fightcore/Companion.h`, `src/Companion.cpp` | Begleiter-System (Roster, Befehle, Verhalten, Leash, Bond) |
 | `src/Companions.cpp` | Begleiter-Bibliothek (Summoner-Assists, Pakt-Begleiter) |
 | `src/Internal.h` | interne Helfer, die Simulation und Begleiter teilen |
+| `include/fightcore/Session.h`, `src/Session.cpp` | Rollback-Session: Input-Vorhersage, Zurückspulen, Neu-Simulieren |
 | `src/Simulation.cpp` | Basis-Moves, Inputs, Ressourcen, Treffer, Realm, Clash |
 | `techniques/*.cpp` | Eine Datei pro Technik (Vorlage: `Nullraum.cpp`) |
 

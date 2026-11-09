@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Techniques.h"
+#include "fightcore/Session.h"
 #include "fightcore/Simulation.h"
 
 using namespace fc;
@@ -541,6 +542,38 @@ static void testCompanionPacts() {
     CHECK(slot >= 0);
 }
 
+static void testRollbackSession() {
+    std::puts("rollback-session: 2 peers mit 4 frames verzoegerung");
+    const MatchSetup s = makeSetup(bodies::summoner(), &schattenmenagerie(), bodies::caster(), &nullraum());
+    // Referenz: alle Inputs sofort bekannt
+    std::vector<FrameInput> in[2];
+    uint32_t seed = 1234;
+    for (int f = 0; f < 600; ++f) { in[0].push_back(randomInput(seed)); in[1].push_back(randomInput(seed)); }
+    MatchState ref = createMatch(s);
+    for (int f = 0; f < 600; ++f) { FrameInput i[2] = {in[0][f], in[1][f]}; step(ref, s, i); }
+
+    // Peer A spielt P0 lokal, Peer B spielt P1 lokal; Remote-Inputs kommen 4 Frames später an
+    constexpr int kDelay = 4;
+    Session a(s), b(s);
+    for (int f = 0; f < 600; ++f) {
+        a.setInput(0, f, in[0][f]);
+        b.setInput(1, f, in[1][f]);
+        if (f >= kDelay) {
+            a.setInput(1, f - kDelay, in[1][f - kDelay]);
+            b.setInput(0, f - kDelay, in[0][f - kDelay]);
+        }
+        a.advance();
+        b.advance();
+    }
+    for (int f = 600 - kDelay; f < 600; ++f) { a.setInput(1, f, in[1][f]); b.setInput(0, f, in[0][f]); }
+    a.applyRollback();
+    b.applyRollback();
+    CHECK(a.frame() == 600 && b.frame() == 600);
+    CHECK(hashState(a.state()) == hashState(ref));
+    CHECK(hashState(b.state()) == hashState(ref));
+    CHECK(a.rollbackCount() > 0 && a.lastRollbackDepth() <= kDelay);
+}
+
 int main() {
     testBodiesBalanced();
     testDeterminismAndRollback();
@@ -567,6 +600,7 @@ int main() {
     testBondLinkAttack();
     testRealmHitsCompanions();
     testCompanionPacts();
+    testRollbackSession();
     if (g_failed) { std::printf("%d check(s) failed\n", g_failed); return EXIT_FAILURE; }
     std::puts("all tests passed");
     return EXIT_SUCCESS;

@@ -11,6 +11,7 @@ add_library(fightcore
     src/Pact.cpp
     src/Companion.cpp
     src/Companions.cpp
+    src/Session.cpp
     techniques/Nullraum.cpp
     techniques/Glutkern.cpp
     techniques/Schattenmenagerie.cpp

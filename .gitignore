@@ -1,2 +1,11 @@
 build/
 *.o
+# Unreal
+Game/Binaries/
+Game/Intermediate/
+Game/Saved/
+Game/DerivedDataCache/
+Game/.vs/
+Game/*.sln
+Game/.vsconfig
+Game/.idea/
