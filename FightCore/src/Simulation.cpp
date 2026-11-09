@@ -8,7 +8,7 @@ namespace fc {
 namespace {
 
 std::vector<MoveDef> buildBaseMoves() {
-    const uint8_t intoSpecial = catBit(MoveCategory::Skill) | catBit(MoveCategory::Apex) | catBit(MoveCategory::Realm);
+    const uint8_t intoSpecial = catBit(MoveCategory::Skill) | catBit(MoveCategory::MaxOutput) | catBit(MoveCategory::Realm);
     std::vector<MoveDef> t(kBaseMoveCount);
     {
         MoveDef& m = t[kLight];
@@ -48,7 +48,7 @@ std::vector<MoveDef> buildBaseMoves() {
     }
     {
         MoveDef& m = t[kBurst];
-        m.name = "Essence Burst"; m.category = MoveCategory::Burst; m.startup = 1; m.active = 4; m.recovery = 30;
+        m.name = "CE Burst"; m.category = MoveCategory::Burst; m.startup = 1; m.active = 4; m.recovery = 30;
         m.hitboxes = {{{Fx{}, Fx::fromInt(1), Fx{}}, Fx::ratio(16, 10)}};
         m.hit = {0, 20, 0, 4, Fx::ratio(45, 100), Fx::ratio(10, 100), ImpactClass::Heavy, true};
         m.invulnFirst = 0; m.invulnLast = 12;
@@ -63,7 +63,7 @@ std::vector<MoveDef> buildBaseMoves() {
     return t;
 }
 
-const PactModifiers kNeutralPact{};
+const OathModifiers kNeutralOath{};
 
 } // namespace
 
@@ -81,37 +81,61 @@ ModeRules rulesFor(GameMode mode) {
     ModeRules r;
     switch (mode) {
         case GameMode::Duel:
+            r.map = &maps::shrineWard();
             break;
         case GameMode::Teams:
             r.fighters = 4;
-            r.teams = true;
-            r.arenaHalfExtent = Fx::fromInt(14);
+            r.teamCount = 2;
+            r.map = &maps::harborDistrict();
             break;
         case GameMode::Brawl:
             r.fighters = kMaxFighters;
-            r.respawnFrames = 300;            // 5 s
-            r.timeLimitFrames = 5 * 60 * 60;  // 5 min
-            r.koLimit = 15;
-            r.arenaHalfExtent = Fx::fromInt(60);
+            r.respawnFrames = 300;
+            r.objective = Objective::None;
+            r.map = &maps::oldCapital();
+            break;
+        case GameMode::Custom:
+            r.fighters = kMaxFighters;
+            r.teamCount = 2;
+            r.respawnFrames = 300;
+            r.timeLimitFrames = 10 * 60 * 60;
+            r.scoreLimit = 50;
+            r.objective = Objective::Deathmatch;
+            r.map = &maps::oldCapital();
             break;
     }
     return r;
 }
 
+const MapDef& mapOf(const MatchSetup& s) { return *s.rules.map; }
+
 void MatchSetup::finalize() {
-    const ModeRules rules = rulesFor(mode);
+    if (!rules.map) rules = rulesFor(mode);
+    if (rules.teamCount == 1) rules.teamCount = 0;
     if (count > rules.fighters) count = rules.fighters;
+    if (count > kMaxFighters) count = kMaxFighters;
     if (count < 2) count = 2;
-    stage.halfExtent = rules.arenaHalfExtent;
     for (int i = 0; i < count; ++i) {
-        if (!rules.teams) loadout[i].team = static_cast<uint8_t>(i);
+        if (rules.teamCount == 0) loadout[i].team = static_cast<uint8_t>(i);
+        else if (loadout[i].team >= rules.teamCount) loadout[i].team = static_cast<uint8_t>(loadout[i].team % rules.teamCount);
         stats[i] = deriveStats(*loadout[i].body);
-        pact[i] = evaluatePact(loadout[i].pact, *loadout[i].body, loadout[i].technique, loadout[i].profile);
+        oath[i] = evaluateOath(loadout[i].oath, *loadout[i].body, loadout[i].technique, loadout[i].profile);
     }
     detail::buildRoster(*this);
 }
 
 bool isEnemy(const MatchState& m, int a, int b) { return a != b && m.f[a].team != m.f[b].team; }
+
+bool canHurt(const MatchState& m, const MatchSetup& s, int attacker, int victim) {
+    return attacker != victim && (m.f[attacker].team != m.f[victim].team || s.rules.friendlyFire);
+}
+
+bool carriesObjective(const MatchState& m, int i) {
+    if (m.objective.ballCarrier == i) return true;
+    for (const FlagState& f : m.objective.flags)
+        if (f.carrier == i) return true;
+    return false;
+}
 
 // ============================================================ TechContext
 FighterState& TechContext::me() const { return m.f[self]; }
@@ -154,9 +178,9 @@ void emit(Ev ev, const MatchState& m, ImpactKind k, int src, ImpactClass s, Vec3
     if (ev) ev->push_back({m.frame, k, static_cast<uint8_t>(src), s, tag, pos, dir, force});
 }
 
-const PactModifiers& mods(const MatchState& m, const MatchSetup& s, int i) {
-    if (s.pact[i].tier == PactTier::None || m.f[i].pactTimer == 0) return kNeutralPact;
-    return s.pact[i].mods;
+const OathModifiers& mods(const MatchState& m, const MatchSetup& s, int i) {
+    if (s.oath[i].tier == OathTier::None || m.f[i].oathTimer == 0) return kNeutralOath;
+    return s.oath[i].mods;
 }
 
 const TechniqueLogic* logicOf(const MatchSetup& s, int i) {
@@ -182,7 +206,7 @@ bool inRealmArea(const MatchState& m, int owner, Vec3 p) {
 bool realmAffects(const MatchState& m, const MatchSetup& s, int owner, int target) {
     const FighterState& t = m.f[target];
     if (!m.f[owner].realm.active() || !isEnemy(m, owner, target) || t.out) return false;
-    if (s.stats[target].sureHitImmune || t.state == FState::Ward) return false;
+    if (s.stats[target].guaranteedHitImmune || t.state == FState::SimpleRealm) return false;
     return inRealmArea(m, owner, t.pos);
 }
 
@@ -261,7 +285,7 @@ struct Cmd {
     int16_t move = -1;
     int8_t skill = -1;
     int32_t ceCost = 0;
-    bool apex = false, realm = false, ward = false;
+    bool maxOutput = false, realm = false, simpleRealm = false;
     int age = 0;
     uint16_t button = 0;
 };
@@ -269,17 +293,19 @@ struct Cmd {
 Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
     FighterState& f = m.f[i];
     const TechniqueDef* T = s.loadout[i].technique;
-    const PactModifiers& pm = mods(m, s, i);
+    const OathModifiers& pm = mods(m, s, i);
     auto age = [&](uint16_t b) { return f.input.pressAge(b, kBufferWindow); };
     // Modifier/Guard zählen im Frame des Tastendrucks, nicht beim (gebufferten) Auslesen.
     auto heldAt = [&](int a, uint16_t b) { return (f.input.ago(a).buttons & b) != 0; };
     auto ok = [&](Cmd c, uint16_t btn, int a) { c.button = btn; c.age = a; f.input.consume(btn, kBufferWindow); return c; };
     int a;
 
+    const bool carrying = carriesObjective(m, i);
     if ((a = age(BtnUlt)) >= 0) {
+        if (carrying) return {};
         const bool mod = heldAt(a, BtnMod);
         if (!mod && enemyRealmAround(m, i) >= 0) {
-            Cmd c; c.ward = true; return ok(c, BtnUlt, a);
+            Cmd c; c.simpleRealm = true; return ok(c, BtnUlt, a);
         }
         if (mod) {
             bool can = T && !pm.noRealm && f.realmMeter >= kRealmMeterMax && f.realm.timer == 0 &&
@@ -287,10 +313,10 @@ Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
             if (can) { Cmd c; c.move = kRealmCast; c.realm = true; return ok(c, BtnUlt, a); }
         } else {
             int32_t cost = ceMaxOf(s, m, i) / 2;
-            bool can = T && T->apexMove >= 0 && !f.apexUsed && !pm.noApex && f.burnout == 0 && cost > 0 &&
-                       f.ce >= cost && (allowed & catBit(MoveCategory::Apex));
+            bool can = T && T->maxOutputMove >= 0 && !f.maxOutputUsed && !pm.noMaxOutput && f.burnout == 0 && cost > 0 &&
+                       f.ce >= cost && (allowed & catBit(MoveCategory::MaxOutput));
             if (can) {
-                Cmd c; c.move = static_cast<int16_t>(T->apexMove + kTechMoveOffset); c.apex = true; c.ceCost = cost;
+                Cmd c; c.move = static_cast<int16_t>(T->maxOutputMove + kTechMoveOffset); c.maxOutput = true; c.ceCost = cost;
                 return ok(c, BtnUlt, a);
             }
         }
@@ -309,7 +335,7 @@ Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
     for (int slot = 0; slot < 3; ++slot) {
         if ((a = age(btns[slot])) < 0 || !heldAt(a, BtnMod)) continue;
         // Mod gehalten -> Skill oder nichts (nie versehentliche Normals)
-        if (!T || f.burnout > 0 || f.cooldown[slot] > 0 || (pm.lockedSkills & (1 << slot))) return {};
+        if (!T || carrying || f.burnout > 0 || f.cooldown[slot] > 0 || (pm.lockedSkills & (1 << slot))) return {};
         if (T->logic && !T->logic->canUseSkill(TechContext{m, s, i, nullptr}, slot)) return {};
         if (!(allowed & catBit(MoveCategory::Skill))) return {};
         int32_t cost = skillCost(m, s, i, slot);
@@ -351,9 +377,9 @@ void startMove(MatchState& m, const MatchSetup& s, int i, const Cmd& c, Ev ev) {
         cd = cd * s.stats[i].cooldownPct / 100 * mods(m, s, i).cooldownPct / 100;
         f.cooldown[c.skill] = static_cast<int16_t>(cd);
     }
-    if (c.apex) {
-        f.apexUsed = true;
-        if (mods(m, s, i).apexNoStartup && mv.startup > 1) f.moveFrame = static_cast<int16_t>(mv.startup - 1);
+    if (c.maxOutput) {
+        f.maxOutputUsed = true;
+        if (mods(m, s, i).maxOutputNoStartup && mv.startup > 1) f.moveFrame = static_cast<int16_t>(mv.startup - 1);
     }
     if (c.realm) f.realmMeter = 0;
 }
@@ -411,14 +437,14 @@ void openRealm(MatchState& m, const MatchSetup& s, int i, Ev ev) {
 void tickResources(MatchState& m, const MatchSetup& s, int i, Ev ev) {
     FighterState& f = m.f[i];
     const BodyStats& st = s.stats[i];
-    const PactModifiers& pm = mods(m, s, i);
+    const OathModifiers& pm = mods(m, s, i);
 
     for (int16_t& cd : f.cooldown) {
         if (cd > 0) --cd;
         if (cd > 0 && buffed(m, s, i)) --cd; // BuffField: doppelt schnelle Cooldowns
     }
     if (f.burnout > 0) --f.burnout;
-    if (f.pactTimer > 0) --f.pactTimer;
+    if (f.oathTimer > 0) --f.oathTimer;
 
     const int32_t max = ceMaxOf(s, m, i);
     if (max <= 0) return;
@@ -426,7 +452,7 @@ void tickResources(MatchState& m, const MatchSetup& s, int i, Ev ev) {
     if (f.state != FState::Heal && !debuffed(m, s, i)) regen = st.ceRegen * pm.ceRegenPct / 100;
     regen -= pm.ceLeak;
     if (f.reinforce) regen -= 25;
-    if (f.state == FState::Ward) regen -= st.wardDrain;
+    if (f.state == FState::SimpleRealm) regen -= st.simpleRealmDrain;
     if (f.state == FState::Heal) regen -= 150;
     regen -= companionUpkeep(m, s, i);
     const bool wasPositive = f.ce > 0;
@@ -442,7 +468,7 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
     FighterState& f = m.f[i];
     const BodyStats& st = s.stats[i];
     const BodyDef& body = *s.loadout[i].body;
-    const PactModifiers& pm = mods(m, s, i);
+    const OathModifiers& pm = mods(m, s, i);
     const FrameInput& in = f.input.current();
     const uint8_t all = 0xFF;
 
@@ -473,7 +499,7 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
         case FState::Walk:
         case FState::Guard: {
             Cmd c = resolveCommand(m, s, i, all);
-            if (c.ward) { f.state = FState::Ward; f.vel = {}; break; }
+            if (c.simpleRealm) { f.state = FState::SimpleRealm; f.vel = {}; break; }
             if (c.move >= 0) { startMove(m, s, i, c, ev); f.vel = {}; break; }
             const bool mod = f.input.held(BtnMod);
             if (mod && f.input.held(BtnGuard) && f.ce > 0 && f.health < st.maxHealth) {
@@ -574,7 +600,7 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
             if ((m.frame & 1) == 0) { ++f.health; ++f.healed; }
             break;
         }
-        case FState::Ward: {
+        case FState::SimpleRealm: {
             bool keep = f.input.held(BtnUlt) && f.ce > 0 && enemyRealmAround(m, i) >= 0;
             if (!keep) f.state = FState::Idle;
             break;
@@ -586,6 +612,67 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
         case FState::Clash:
             if (f.input.pressedWithin(BtnLight, 1)) { f.input.consume(BtnLight, 1); ++f.realm.clashCount; }
             break;
+    }
+}
+
+bool insideBox(const ObstacleDef& o, Vec3 p, Fx margin) {
+    return abs(p.x - o.center.x) < o.halfX + margin && abs(p.z - o.center.z) < o.halfZ + margin && p.y < o.height;
+}
+
+void damageObstacle(MatchState& m, const MatchSetup& s, int index, int amount, int source, Vec3 at, Vec3 normal, Fx force, Ev ev) {
+    ObstacleState& o = m.obstacles[index];
+    if (o.broken) return;
+    o.hp = static_cast<int16_t>(o.hp - amount);
+    if (o.hp <= 0) {
+        o.broken = true;
+        emit(ev, m, ImpactKind::WallBreak, source, ImpactClass::Crushing, at, normal, force, static_cast<int16_t>(index));
+    } else {
+        emit(ev, m, ImpactKind::WallSplat, source, ImpactClass::Heavy, at, normal, force, static_cast<int16_t>(index));
+    }
+    (void)s;
+}
+
+void collideWithMap(MatchState& m, const MatchSetup& s, int i, Ev ev) {
+    FighterState& f = m.f[i];
+    const MapDef& map = mapOf(s);
+    const Fx body = s.stats[i].pushRadius;
+    const bool flung = f.state == FState::Hitstun;
+
+    // The barrier: indestructible, bodies bounce off it
+    const Vec3 flat{f.pos.x, Fx{}, f.pos.z};
+    const Fx dist = length(flat);
+    const Fx limit = map.radius - body;
+    if (dist > limit) {
+        const Vec3 n = normalizeXZ(flat, Vec3{Fx{}, Fx{}, Fx::fromInt(1)});
+        f.pos = Vec3{n.x * limit, f.pos.y, n.z * limit};
+        const Fx into = dot(f.vel, n);
+        if (into > Fx{}) {
+            if (flung && into >= map.impactSpeed) {
+                emit(ev, m, ImpactKind::BarrierHit, i, ImpactClass::Heavy, f.pos, n, into);
+                f.stun = static_cast<int16_t>(f.stun + 10);
+            }
+            f.vel = f.vel - n * (into + into * Fx::ratio(1, 2)); // reflect, lose half the speed
+        }
+    }
+
+    // Buildings / pillars: solid until wrecked
+    for (int k = 0; k < static_cast<int>(map.obstacles.size()) && k < kMaxObstacles; ++k) {
+        if (m.obstacles[k].broken) continue;
+        const ObstacleDef& o = map.obstacles[k];
+        if (!insideBox(o, f.pos, body)) continue;
+        const Fx dx = f.pos.x - o.center.x, dz = f.pos.z - o.center.z;
+        const Fx penX = o.halfX + body - abs(dx), penZ = o.halfZ + body - abs(dz);
+        Vec3 n{};
+        if (penX < penZ) n.x = dx.raw < 0 ? Fx::fromInt(-1) : Fx::fromInt(1);
+        else n.z = dz.raw < 0 ? Fx::fromInt(-1) : Fx::fromInt(1);
+        const Fx speed = abs(dot(f.vel, n));
+        if (flung && speed >= map.impactSpeed) {
+            damageObstacle(m, s, k, (speed * Fx::fromInt(400)).toInt(), i, f.pos, n, speed, ev);
+            if (m.obstacles[k].broken) continue; // smashed straight through it
+            f.stun = static_cast<int16_t>(f.stun + 10);
+        }
+        if (penX < penZ) { f.pos.x += n.x * penX; f.vel.x = -f.vel.x * Fx::ratio(1, 2); }
+        else { f.pos.z += n.z * penZ; f.vel.z = -f.vel.z * Fx::ratio(1, 2); }
     }
 }
 
@@ -617,33 +704,7 @@ void physics(MatchState& m, const MatchSetup& s, int i, Ev ev) {
         }
     }
 
-    // Zerstörbare Wände (gameplay-relevant)
-    const Fx h = s.stage.halfExtent;
-    Fx* axis[4] = {&f.pos.x, &f.pos.x, &f.pos.z, &f.pos.z};
-    Fx* vaxis[4] = {&f.vel.x, &f.vel.x, &f.vel.z, &f.vel.z};
-    for (int w = 0; w < 4; ++w) {
-        const bool positive = (w % 2) == 0;
-        WallState& wall = m.walls[w];
-        Fx bound = wall.broken ? h + h : h;
-        Fx p = *axis[w];
-        if (!(positive ? p > bound : p < -bound)) continue;
-        *axis[w] = positive ? bound : -bound;
-        Fx speed = abs(*vaxis[w]);
-        if (!wall.broken && f.state == FState::Hitstun && speed >= s.stage.wallImpactSpeed) {
-            wall.hp = static_cast<int16_t>(wall.hp - (speed * Fx::fromInt(400)).toInt());
-            Vec3 n{};
-            if (w < 2) n.x = positive ? Fx::fromInt(1) : Fx::fromInt(-1);
-            else n.z = positive ? Fx::fromInt(1) : Fx::fromInt(-1);
-            if (wall.hp <= 0) {
-                wall.broken = true;
-                emit(ev, m, ImpactKind::WallBreak, i, ImpactClass::Crushing, f.pos, n, speed);
-                continue;
-            }
-            emit(ev, m, ImpactKind::WallSplat, i, ImpactClass::Heavy, f.pos, n, speed);
-            f.stun = static_cast<int16_t>(f.stun + 10);
-        }
-        *vaxis[w] = -(*vaxis[w]) * Fx::ratio(1, 2);
-    }
+    collideWithMap(m, s, i, ev);
 }
 
 void pushApart(MatchState& m, const MatchSetup& s) {
@@ -721,7 +782,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
 
     if (blocked) {
         const bool parry = d.state == FState::Guard && m.frame - d.guardPressFrame <= s.stats[di].parryWindow &&
-                           mv.category != MoveCategory::Apex;
+                           mv.category != MoveCategory::MaxOutput;
         if (parry) {
             if (!h.projectile && !fromCompanion) { a.state = FState::Hitstun; a.stun = 18; a.moveId = -1; a.vel = {}; }
             addRealmMeter(d, 100);
@@ -745,7 +806,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     if (al) dmg = dmg * al->damageDealtPct(actx, techIdx) / 100;
     if (dl) dmg = dmg * dl->damageTakenPct(dctx) / 100;
     if (buffed(m, s, atk) || debuffed(m, s, di)) dmg = dmg * (bondLevel(a) >= 3 ? 125 : 115) / 100;
-    const bool ceAttack = h.projectile || mv.category == MoveCategory::Skill || mv.category == MoveCategory::Apex;
+    const bool ceAttack = h.projectile || mv.category == MoveCategory::Skill || mv.category == MoveCategory::MaxOutput;
     if (a.reinforce) dmg = dmg * 120 / 100;
     if (d.reinforce && ceAttack) dmg = dmg * 80 / 100;
     if (mv.category == MoveCategory::Grab && s.loadout[atk].body->has(PassiveStrongGrab)) dmg = dmg * 150 / 100;
@@ -757,17 +818,17 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
         dmg = dmg * 130 / 100; // Treffer von Seite/Rücken
 
     // Nullfunke: Normal perfekt auf das Hitstop-Ende des vorherigen Treffers getimed
-    bool zeroSpark = false;
+    bool blackSpark = false;
     if (!h.projectile && !fromCompanion && mv.category == MoveCategory::Normal) {
-        int window = s.stats[atk].zeroSparkWindow + mods(m, s, atk).extraZeroSpark;
+        int window = s.stats[atk].blackSparkWindow + mods(m, s, atk).extraBlackSpark;
         int diff = a.pressFrame - a.linkFrame;
         if (diff < 0) diff = -diff;
         if (diff <= window) {
-            zeroSpark = true;
+            blackSpark = true;
             dmg = dmg * 250 / 100;
             addRealmMeter(a, 250);
             a.hitstop = d.hitstop = static_cast<int16_t>(p.hitstop + 8);
-            emit(ev, m, ImpactKind::ZeroSpark, atk, ImpactClass::Crushing, h.point, h.dir, p.knockback);
+            emit(ev, m, ImpactKind::BlackSpark, atk, ImpactClass::Crushing, h.point, h.dir, p.knockback);
         }
     }
 
@@ -796,7 +857,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     else a.linkFrame = m.frame + a.hitstop + 1;
     addRealmMeter(a, dmg / 2 * s.stats[atk].realmGainPct / 100 * mods(m, s, atk).realmGainPct / 100);
     addRealmMeter(d, dmg / 4);
-    if (!zeroSpark) emit(ev, m, ImpactKind::Hit, atk, p.impact, h.point, h.dir, p.knockback + p.launch);
+    if (!blackSpark) emit(ev, m, ImpactKind::Hit, atk, p.impact, h.point, h.dir, p.knockback + p.launch);
     if (al && !fromCompanion) al->onHitLanded(actx, techIdx, h.projectile, di);
 }
 
@@ -820,7 +881,7 @@ int firstEnemyHit(const MatchState& m, const MatchSetup& s, int atk, Vec3 c, Fx 
     const int t = m.f[atk].target;
     for (int k = -1; k < m.count; ++k) {
         const int j = k < 0 ? t : k;
-        if (j < 0 || (k >= 0 && j == t) || !isEnemy(m, atk, j) || isInvulnerable(m, s, j)) continue;
+        if (j < 0 || (k >= 0 && j == t) || !canHurt(m, s, atk, j) || isInvulnerable(m, s, j)) continue;
         if (grab && (!m.f[j].grounded || m.f[j].state == FState::Hitstun)) continue;
         if (hitsFighter(m, j, c, r)) return j;
     }
@@ -868,7 +929,7 @@ MeleeCheck checkMelee(const MatchState& m, const MatchSetup& s, int atk) {
 }
 
 void updateProjectiles(MatchState& m, const MatchSetup& s, Ev ev) {
-    const Fx limit = s.stage.halfExtent * Fx::fromInt(3);
+    const MapDef& map = mapOf(s);
     for (Projectile& p : m.proj) {
         if (!p.alive) continue;
         if (p.armDelay > 0) { --p.armDelay; continue; }
@@ -888,7 +949,14 @@ void updateProjectiles(MatchState& m, const MatchSetup& s, Ev ev) {
             p.alive = false;
             continue;
         }
-        if (--p.life <= 0 || abs(p.pos.x) > limit || abs(p.pos.z) > limit) {
+        bool hitScenery = false;
+        for (int k = 0; k < static_cast<int>(map.obstacles.size()) && k < kMaxObstacles && !hitScenery; ++k) {
+            if (m.obstacles[k].broken || !insideBox(map.obstacles[k], p.pos, p.radius)) continue;
+            damageObstacle(m, s, k, mv.hit.damage / 2, p.owner, p.pos, normalizeXZ(p.vel, {}), length(p.vel), ev);
+            hitScenery = true;
+        }
+        const bool outside = length(Vec3{p.pos.x, Fx{}, p.pos.z}) > map.radius;
+        if (hitScenery || outside || --p.life <= 0) {
             p.alive = false;
             emit(ev, m, ImpactKind::ProjectileBurst, p.owner, ImpactClass::Medium, p.pos, {}, length(p.vel));
         }
@@ -938,14 +1006,14 @@ void tickRealms(MatchState& m, const MatchSetup& s, Ev ev) {
             if (cls == RealmClass::Damage && elapsed % 30 == 0) {
                 tf.health = static_cast<int16_t>(tf.health - (bond3 ? 25 : 20));
                 tf.lastHitBy = static_cast<int8_t>(o);
-                emit(ev, m, ImpactKind::SureHit, o, ImpactClass::Medium, tf.pos, {}, Fx{}, 0);
+                emit(ev, m, ImpactKind::GuaranteedHit, o, ImpactClass::Medium, tf.pos, {}, Fx{}, 0);
             } else if (cls == RealmClass::Lock && elapsed % 200 == 0 && tf.state != FState::Attack) {
                 tf.health = static_cast<int16_t>(tf.health - 5);
                 tf.lastHitBy = static_cast<int8_t>(o);
                 tf.state = FState::Locked;
                 tf.lock = static_cast<int16_t>(bond3 ? 120 : 90);
                 tf.vel = {};
-                emit(ev, m, ImpactKind::SureHit, o, ImpactClass::Heavy, tf.pos, {}, Fx{}, 1);
+                emit(ev, m, ImpactKind::GuaranteedHit, o, ImpactClass::Heavy, tf.pos, {}, Fx{}, 1);
             }
         }
         if (const TechniqueLogic* l = logicOf(s, o)) l->onRealmTick(TechContext{m, s, o, ev});
@@ -957,36 +1025,45 @@ void tickRealms(MatchState& m, const MatchSetup& s, Ev ev) {
 }
 
 // ---- Spawn, K.O., Respawn, Sieg
-Vec3 spawnPoint(const MatchSetup& s, int i) {
-    switch (s.mode) {
-        case GameMode::Duel:
-            return {Fx{}, Fx{}, Fx::fromInt(i == 0 ? -3 : 3)};
-        case GameMode::Teams: {
-            int slot = 0;
-            for (int j = 0; j < i; ++j) slot += s.loadout[j].team == s.loadout[i].team;
-            const Fx x = Fx::ratio(slot % 2 == 0 ? -15 : 15, 10) * Fx::fromInt(1 + slot / 2);
-            return {x, Fx{}, Fx::fromInt(s.loadout[i].team == 0 ? -4 : 4)};
-        }
-        case GameMode::Brawl: {
-            // Gleichmäßig auf einem quadratischen Ring verteilt (ohne Trigonometrie -> deterministisch)
-            const Fx r = s.stage.halfExtent * Fx::ratio(6, 10);
-            const int perSide = (s.count + 3) / 4;
-            const int side = i % 4, k = i / 4;
-            const Fx t = -r + (r + r) * Fx::ratio(k + 1, perSide + 1);
-            switch (side) {
-                case 0: return {t, Fx{}, -r};
-                case 1: return {r, Fx{}, t};
-                case 2: return {-t, Fx{}, r};
-                default: return {-r, Fx{}, -t};
-            }
-        }
+Vec3 teamBase(const MatchSetup& s, int team) {
+    // Up to four team bases on the cardinal directions
+    const Fx r = mapOf(s).radius * Fx::ratio(7, 10);
+    switch (team % 4) {
+        case 0: return {Fx{}, Fx{}, -r};
+        case 1: return {Fx{}, Fx{}, r};
+        case 2: return {-r, Fx{}, Fx{}};
+        default: return {r, Fx{}, Fx{}};
     }
-    return {};
+}
+
+Vec3 spawnPoint(const MatchSetup& s, int i) {
+    if (s.mode == GameMode::Duel) return {Fx{}, Fx{}, Fx::fromInt(i == 0 ? -4 : 4)};
+    if (s.rules.teamCount > 0) {
+        const int team = s.loadout[i].team;
+        int slot = 0;
+        for (int j = 0; j < i; ++j) slot += s.loadout[j].team == team;
+        const Vec3 base = teamBase(s, team);
+        const Vec3 toCenter = normalizeXZ(Vec3{} - base, Vec3{Fx{}, Fx{}, Fx::fromInt(1)});
+        const Vec3 side{toCenter.z, Fx{}, -toCenter.x};
+        const Fx offset = Fx::ratio(slot % 2 == 0 ? -15 : 15, 10) * Fx::fromInt(1 + slot / 2);
+        return base + side * offset + toCenter * Fx::fromInt(slot / 4);
+    }
+    // Free-for-all: spread over a square ring that fits inside the colony
+    const Fx r = mapOf(s).radius * Fx::ratio(5, 10);
+    const int perSide = (s.count + 3) / 4;
+    const int side = i % 4, k = i / 4;
+    const Fx t = -r + (r + r) * Fx::ratio(k + 1, perSide + 1);
+    switch (side) {
+        case 0: return {t, Fx{}, -r};
+        case 1: return {r, Fx{}, t};
+        case 2: return {-t, Fx{}, r};
+        default: return {-r, Fx{}, -t};
+    }
 }
 
 void resetFighter(MatchState& m, const MatchSetup& s, int i, bool matchStart) {
     FighterState& f = m.f[i];
-    const PactModifiers& pm = s.pact[i].tier == PactTier::None ? kNeutralPact : s.pact[i].mods;
+    const OathModifiers& pm = s.oath[i].tier == OathTier::None ? kNeutralOath : s.oath[i].mods;
     const FighterState keep = f;
     f = FighterState{};
     f.team = s.loadout[i].team;
@@ -995,10 +1072,10 @@ void resetFighter(MatchState& m, const MatchSetup& s, int i, bool matchStart) {
         f.kos = keep.kos;
         f.deaths = keep.deaths;
         f.lostMask = keep.lostMask;
-        f.apexUsed = keep.apexUsed;
-        f.pactTimer = keep.pactTimer;
+        f.maxOutputUsed = keep.maxOutputUsed;
+        f.oathTimer = keep.oathTimer;
     } else {
-        f.pactTimer = pm.durationFrames;
+        f.oathTimer = pm.durationFrames;
     }
     f.health = static_cast<int16_t>(s.stats[i].maxHealth * pm.maxHealthPct / 100);
     f.ce = s.stats[i].ceMax * pm.cePoolPct / 100;
@@ -1008,7 +1085,6 @@ void resetFighter(MatchState& m, const MatchSetup& s, int i, bool matchStart) {
 }
 
 void handleKnockouts(MatchState& m, const MatchSetup& s, Ev ev) {
-    const ModeRules rules = rulesFor(s.mode);
     for (int i = 0; i < m.count; ++i) {
         FighterState& f = m.f[i];
         if (f.out) {
@@ -1024,17 +1100,133 @@ void handleKnockouts(MatchState& m, const MatchSetup& s, Ev ev) {
         f.vel = {};
         f.realm = RealmState{};
         ++f.deaths;
-        if (f.lastHitBy >= 0 && f.lastHitBy != i) ++m.f[f.lastHitBy].kos;
+        const int killer = f.lastHitBy;
+        if (killer >= 0 && killer != i) {
+            ++m.f[killer].kos;
+            if (s.rules.objective == Objective::Deathmatch && isEnemy(m, killer, i)) ++m.objective.score[m.f[killer].team];
+        }
         for (CompanionState& c : f.comp) c = CompanionState{};
-        f.respawn = rules.respawnFrames > 0 ? rules.respawnFrames : 0;
-        emit(ev, m, ImpactKind::KO, i, ImpactClass::Crushing, f.pos, {}, Fx{}, f.lastHitBy);
+        f.respawn = s.rules.respawnFrames > 0 ? s.rules.respawnFrames : 0;
+        emit(ev, m, ImpactKind::KO, i, ImpactClass::Crushing, f.pos, {}, Fx{}, static_cast<int16_t>(killer));
+    }
+}
+
+bool near(Vec3 a, Vec3 b, Fx range) { return distXZ(a, b) <= range; }
+
+void tickFlags(MatchState& m, const MatchSetup& s, Ev ev) {
+    const int flags = s.rules.teamCount < kMaxFlags ? s.rules.teamCount : kMaxFlags;
+    const Fx reach = Fx::ratio(15, 10);
+    for (int t = 0; t < flags; ++t) {
+        FlagState& flag = m.objective.flags[t];
+        const Vec3 home = teamBase(s, t);
+        if (flag.carrier >= 0) {
+            const FighterState& c = m.f[flag.carrier];
+            if (c.out) {
+                emit(ev, m, ImpactKind::FlagDropped, flag.carrier, ImpactClass::Medium, flag.pos, {}, Fx{}, static_cast<int16_t>(t));
+                flag.carrier = -1;
+                flag.returnTimer = 900;
+                continue;
+            }
+            flag.pos = c.pos + Vec3{Fx{}, Fx::ratio(15, 10), Fx{}};
+            // Score by bringing it to your own base while your flag is safe at home
+            const int team = c.team;
+            if (team < flags && m.objective.flags[team].home && near(c.pos, teamBase(s, team), reach + reach)) {
+                ++m.objective.score[team];
+                emit(ev, m, ImpactKind::FlagCaptured, flag.carrier, ImpactClass::Crushing, c.pos, {}, Fx{}, static_cast<int16_t>(t));
+                flag = FlagState{};
+                flag.pos = home;
+            }
+            continue;
+        }
+        if (!flag.home && --flag.returnTimer <= 0) {
+            flag = FlagState{};
+            flag.pos = home;
+            emit(ev, m, ImpactKind::FlagReturned, t, ImpactClass::Light, home, {}, Fx{}, static_cast<int16_t>(t));
+            continue;
+        }
+        for (int i = 0; i < m.count; ++i) {
+            const FighterState& f = m.f[i];
+            if (f.out || !near(f.pos, flag.pos, reach)) continue;
+            if (f.team != t && !carriesObjective(m, i)) {
+                flag.carrier = static_cast<int8_t>(i);
+                flag.home = false;
+                emit(ev, m, ImpactKind::FlagTaken, i, ImpactClass::Medium, flag.pos, {}, Fx{}, static_cast<int16_t>(t));
+                break;
+            }
+            if (f.team == t && !flag.home) {
+                flag = FlagState{};
+                flag.pos = home;
+                emit(ev, m, ImpactKind::FlagReturned, i, ImpactClass::Light, home, {}, Fx{}, static_cast<int16_t>(t));
+                break;
+            }
+        }
+    }
+}
+
+void tickOddball(MatchState& m, Ev ev) {
+    ObjectiveState& o = m.objective;
+    if (o.ballCarrier >= 0) {
+        const FighterState& c = m.f[o.ballCarrier];
+        if (c.out) {
+            emit(ev, m, ImpactKind::BallDropped, o.ballCarrier, ImpactClass::Medium, o.ballPos, {}, Fx{});
+            o.ballCarrier = -1;
+            o.ballPos.y = Fx{};
+            return;
+        }
+        o.ballPos = c.pos + Vec3{Fx{}, Fx::ratio(15, 10), Fx{}};
+        if (++o.ballHeld >= 60) { o.ballHeld = 0; ++o.score[c.team]; }
+        return;
+    }
+    for (int i = 0; i < m.count; ++i) {
+        if (m.f[i].out || carriesObjective(m, i) || !near(m.f[i].pos, o.ballPos, Fx::ratio(15, 10))) continue;
+        o.ballCarrier = static_cast<int8_t>(i);
+        o.ballHeld = 0;
+        emit(ev, m, ImpactKind::BallTaken, i, ImpactClass::Medium, o.ballPos, {}, Fx{});
+        break;
+    }
+}
+
+void tickZones(MatchState& m, const MatchSetup& s, Ev ev) {
+    const MapDef& map = mapOf(s);
+    const int zones = static_cast<int>(map.zones.size()) < kMaxZones ? static_cast<int>(map.zones.size()) : kMaxZones;
+    for (int z = 0; z < zones; ++z) {
+        ZoneState& zone = m.objective.zones[z];
+        int team = -1;
+        bool contested = false;
+        for (int i = 0; i < m.count; ++i) {
+            if (m.f[i].out || !near(m.f[i].pos, map.zones[z], Fx::fromInt(3))) continue;
+            if (team < 0) team = m.f[i].team;
+            else if (team != m.f[i].team) contested = true;
+        }
+        if (team >= 0 && !contested && team != zone.owner) {
+            if (zone.capturing != team) { zone.capturing = static_cast<int8_t>(team); zone.progress = 0; }
+            if (++zone.progress >= 240) {
+                zone.owner = static_cast<int8_t>(team);
+                zone.capturing = -1;
+                zone.progress = 0;
+                emit(ev, m, ImpactKind::ZoneCaptured, team, ImpactClass::Heavy, map.zones[z], {}, Fx{}, static_cast<int16_t>(z));
+            }
+        } else if (team < 0 && zone.progress > 0) {
+            --zone.progress;
+        }
+        if (zone.owner >= 0 && m.frame % 60 == 0) ++m.objective.score[zone.owner];
+    }
+}
+
+void tickObjective(MatchState& m, const MatchSetup& s, Ev ev) {
+    switch (s.rules.objective) {
+        case Objective::CaptureTheFlag: tickFlags(m, s, ev); break;
+        case Objective::Oddball: tickOddball(m, ev); break;
+        case Objective::Checkpoints: tickZones(m, s, ev); break;
+        default: break;
     }
 }
 
 void checkWinner(MatchState& m, const MatchSetup& s) {
-    const ModeRules rules = rulesFor(s.mode);
-    // Elimination: genau ein Team lebt noch
-    if (rules.respawnFrames < 0) {
+    const ModeRules& rules = s.rules;
+    if (rules.objective == Objective::None) return; // open brawl never ends
+
+    if (rules.objective == Objective::Elimination) {
         int aliveTeam = -1;
         bool several = false;
         for (int i = 0; i < m.count; ++i) {
@@ -1046,17 +1238,21 @@ void checkWinner(MatchState& m, const MatchSetup& s) {
         else if (!several) m.winner = static_cast<uint8_t>(aliveTeam);
         return;
     }
-    // Brawl: K.O.-Limit oder Zeitlimit -> meiste K.O.s
-    int best = -1;
+
+    // Score based: FFA deathmatch counts personal KOs
+    auto scoreOf = [&](int team) -> int {
+        if (rules.teamCount == 0 && rules.objective == Objective::Deathmatch) return m.f[team].kos;
+        return m.objective.score[team];
+    };
+    const int teams = rules.teamCount > 0 ? rules.teamCount : m.count;
+    int best = 0;
     bool tie = false;
-    for (int i = 0; i < m.count; ++i) {
-        if (best < 0 || m.f[i].kos > m.f[best].kos) { best = i; tie = false; }
-        else if (m.f[i].kos == m.f[best].kos) tie = true;
+    for (int t = 1; t < teams; ++t) {
+        if (scoreOf(t) > scoreOf(best)) { best = t; tie = false; }
+        else if (scoreOf(t) == scoreOf(best)) tie = true;
     }
-    const bool limitReached = rules.koLimit > 0 && m.f[best].kos >= rules.koLimit;
-    const bool timeUp = rules.timeLimitFrames > 0 && m.frame + 1 >= rules.timeLimitFrames;
-    if (limitReached) m.winner = m.f[best].team;
-    else if (timeUp) m.winner = tie ? kDraw : m.f[best].team;
+    if (rules.scoreLimit > 0 && scoreOf(best) >= rules.scoreLimit) m.winner = static_cast<uint8_t>(best);
+    else if (rules.timeLimitFrames > 0 && m.frame + 1 >= rules.timeLimitFrames) m.winner = tie ? kDraw : static_cast<uint8_t>(best);
 }
 
 } // namespace detail
@@ -1070,7 +1266,10 @@ MatchState createMatch(const MatchSetup& s) {
     m.count = static_cast<uint8_t>(s.count);
     for (int i = 0; i < s.count; ++i) resetFighter(m, s, i, true);
     for (int i = 0; i < s.count; ++i) m.f[i].target = static_cast<int8_t>(nearestEnemy(m, i));
-    for (WallState& w : m.walls) w.hp = s.stage.wallHp;
+    const MapDef& map = mapOf(s);
+    for (int k = 0; k < static_cast<int>(map.obstacles.size()) && k < kMaxObstacles; ++k) m.obstacles[k].hp = map.obstacles[k].hp;
+    for (int k = static_cast<int>(map.obstacles.size()); k < kMaxObstacles; ++k) m.obstacles[k].broken = true;
+    for (int t = 0; t < kMaxFlags; ++t) m.objective.flags[t].pos = teamBase(s, t);
     return m;
 }
 
@@ -1113,6 +1312,7 @@ void step(MatchState& m, const MatchSetup& s, const FrameInput inputs[], EventSi
     updateProjectiles(m, s, ev);
     tickRealms(m, s, ev);
     handleKnockouts(m, s, ev);
+    tickObjective(m, s, ev);
     checkWinner(m, s);
     ++m.frame;
 }
@@ -1141,13 +1341,13 @@ uint64_t hashState(const MatchState& m) {
     for (int i = 0; i < m.count; ++i) {
         const FighterState& f = m.f[i];
         x.add(f.pos); x.add(f.vel); x.add(f.facing);
-        x.addInt(f.ce); x.addInt(f.pressFrame); x.addInt(f.linkFrame); x.addInt(f.guardPressFrame); x.addInt(f.pactTimer);
+        x.addInt(f.ce); x.addInt(f.pressFrame); x.addInt(f.linkFrame); x.addInt(f.guardPressFrame); x.addInt(f.oathTimer);
         x.addInt(f.health); x.addInt(f.realmMeter); x.addInt(f.stateFrame); x.addInt(f.moveId); x.addInt(f.moveFrame);
         x.addInt(f.stun); x.addInt(f.hitstop); x.addInt(f.comboTaken); x.addInt(f.burnout); x.addInt(f.lock);
         x.addInt(f.healed);
         for (int16_t c : f.cooldown) x.addInt(c);
         x.addInt(static_cast<int>(f.state)); x.addInt(f.armorLeft);
-        x.addInt(f.moveHasHit | (f.grounded << 1) | (f.launched << 2) | (f.reinforce << 3) | (f.apexUsed << 4) |
+        x.addInt(f.moveHasHit | (f.grounded << 1) | (f.launched << 2) | (f.reinforce << 3) | (f.maxOutputUsed << 4) |
                  (f.manualTarget << 5) | (f.out << 6));
         x.h = f.input.hash(x.h);
         for (int32_t t : f.tech) x.addInt(t);
@@ -1167,7 +1367,12 @@ uint64_t hashState(const MatchState& m) {
         x.addInt(p.owner); x.addInt(p.source); x.addInt(p.moveIndex); x.addInt(p.life); x.addInt(p.armDelay);
         x.add(p.pos); x.add(p.vel); x.add(p.radius);
     }
-    for (const WallState& w : m.walls) { x.addInt(w.hp); x.addInt(w.broken); }
+    for (const ObstacleState& o : m.obstacles) { x.addInt(o.hp); x.addInt(o.broken); }
+    const ObjectiveState& o = m.objective;
+    for (int16_t sc : o.score) x.addInt(sc);
+    for (const FlagState& fl : o.flags) { x.add(fl.pos); x.addInt(fl.carrier); x.addInt(fl.home); x.addInt(fl.returnTimer); }
+    for (const ZoneState& z : o.zones) { x.addInt(z.owner); x.addInt(z.capturing); x.addInt(z.progress); }
+    x.add(o.ballPos); x.addInt(o.ballCarrier); x.addInt(o.ballHeld);
     return x.h;
 }
 

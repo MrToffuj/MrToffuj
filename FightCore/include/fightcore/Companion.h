@@ -55,8 +55,8 @@ const CompanionDef& sparkOwl();    // Funkeneule    – Zoner
 const CompanionDef& vineToad();    // Rankenkröte   – Support
 const CompanionDef& stoneWarden(); // Steinwächter  – Guard
 // Pakt-Belohnungen
-const CompanionDef& pactSpirit();  // Paktgeist     – temporärer Zusatz-Begleiter
-const CompanionDef& shifter();     // Wandler       – adaptive Sonderform
+const CompanionDef& oathSpirit();  // Paktgeist     – temporärer Zusatz-Begleiter
+const CompanionDef& adaptor();     // Wandler       – adaptive Sonderform
 } // namespace companions
 
 } // namespace fc

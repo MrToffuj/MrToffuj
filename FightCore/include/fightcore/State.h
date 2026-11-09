@@ -14,11 +14,15 @@ constexpr int kMaxFighters = 20;
 constexpr int kMaxProjectiles = 64;
 constexpr uint8_t kNoWinner = 255;
 constexpr uint8_t kDraw = 254;
+constexpr int kMaxTeams = kMaxFighters;
+constexpr int kMaxObstacles = 24;
+constexpr int kMaxFlags = 4;
+constexpr int kMaxZones = 3;
 
 enum class FState : uint8_t {
     Idle, Walk, Dash, Dodge, Air, Attack, Hitstun, Blockstun, Knockdown, Guard,
     Heal,   // Rückfluss
-    Ward,   // Schutzkreis
+    SimpleRealm,   // Schutzkreis
     Locked, // vom Realm festgesetzt
     Clash,  // Realm-Clash (Input-Duell)
 };
@@ -61,7 +65,7 @@ struct FighterState {
     int32_t pressFrame = 0;      // Frame des Tastendrucks, der den aktuellen Move gestartet hat
     int32_t linkFrame = -100;    // perfekter Frame für Nullfunke (Ende des Hitstops des letzten Treffers)
     int32_t guardPressFrame = -100;
-    int32_t pactTimer = -1;
+    int32_t oathTimer = -1;
     int16_t health = 0;
     int16_t realmMeter = 0;
     int16_t stateFrame = 0;
@@ -80,7 +84,7 @@ struct FighterState {
     bool grounded = true;
     bool launched = false;
     bool reinforce = false;
-    bool apexUsed = false;
+    bool maxOutputUsed = false;
     InputBuffer input;
     std::array<CompanionState, 3> comp{};
     uint8_t lostMask = 0;        // Roster-Einträge, die für die Runde weg sind
@@ -109,9 +113,31 @@ struct Projectile {
     Fx radius{};
 };
 
-struct WallState {
+struct ObstacleState {
     int16_t hp = 0;
     bool broken = false;
+};
+
+struct FlagState {
+    Vec3 pos{};
+    int8_t carrier = -1;
+    bool home = true;
+    int16_t returnTimer = 0;
+};
+
+struct ZoneState {
+    int8_t owner = -1;
+    int8_t capturing = -1;
+    int16_t progress = 0;
+};
+
+struct ObjectiveState {
+    std::array<int16_t, kMaxTeams> score{};
+    std::array<FlagState, kMaxFlags> flags{};
+    std::array<ZoneState, kMaxZones> zones{};
+    Vec3 ballPos{};
+    int8_t ballCarrier = -1;
+    int16_t ballHeld = 0;
 };
 
 struct MatchState {
@@ -120,7 +146,8 @@ struct MatchState {
     uint8_t winner = kNoWinner; // Team-ID des Siegers, kDraw, kNoWinner = läuft
     std::array<FighterState, kMaxFighters> f{};
     std::array<Projectile, kMaxProjectiles> proj{};
-    std::array<WallState, 4> walls{};
+    std::array<ObstacleState, kMaxObstacles> obstacles{};
+    ObjectiveState objective{};
 };
 
 static_assert(std::is_trivially_copyable_v<MatchState>, "MatchState muss kopierbar sein (Rollback)");

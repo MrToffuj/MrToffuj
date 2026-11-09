@@ -8,15 +8,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(fightcore
     src/Simulation.cpp
     src/Body.cpp
-    src/Pact.cpp
+    src/Oath.cpp
     src/Companion.cpp
     src/Companions.cpp
     src/Session.cpp
     src/Bot.cpp
     src/Lobby.cpp
-    techniques/Nullraum.cpp
-    techniques/Glutkern.cpp
-    techniques/Schattenmenagerie.cpp
+    src/Maps.cpp
+    techniques/Boundless.cpp
+    techniques/CalamityFlames.cpp
+    techniques/ShadowPuppets.cpp
 )
 target_include_directories(fightcore PUBLIC include techniques)
 if(MSVC)

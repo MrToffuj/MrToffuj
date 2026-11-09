@@ -65,7 +65,7 @@ void AFightHUD::DrawFighterPanel(int32 Fighter, bool bRight, bool bDetailed)
 	if (F.burnout > 0) Status += TEXT("BURNOUT  ");
 	if (bRealmReady) Status += TEXT("REALM BEREIT  ");
 	if (F.reinforce) Status += TEXT("VERSTAERKT  ");
-	if (!F.apexUsed && L.technique) Status += TEXT("APEX  ");
+	if (!F.maxOutputUsed && L.technique) Status += TEXT("APEX  ");
 	Status += FString::Printf(TEXT("Bond %d"), fc::bondLevel(F));
 	DrawLabel(Status, TextX, Y, FLinearColor(1.f, 1.f, 0.8f), 0.8f, bRight);
 	Y += 24.f * S;

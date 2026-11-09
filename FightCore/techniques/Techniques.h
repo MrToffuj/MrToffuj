@@ -3,20 +3,20 @@
 
 namespace fc::techniques {
 
-// Nullraum: Raum-/Distanz-Technik. Core Rule "Distanzfeld" (Auto-Block).
-const TechniqueDef& nullraum();
-enum NullraumMove : int16_t { kRepel, kAttract, kFoldStep, kSingularity, kNullraumMoveCount };
+// Boundless: Raum-/Distanz-Technik. Core Rule "Distanzfeld" (Auto-Block).
+const TechniqueDef& boundless();
+enum BoundlessMove : int16_t { kRepel, kAttract, kFoldStep, kSingularity, kBoundlessMoveCount };
 
-// Glutkern: Feuer-Technik. Core Rule "Hitze-Stacks" (Brennen). Entzündet Holz in der Welt.
-const TechniqueDef& glutkern();
-enum GlutkernMove : int16_t { kEmberMoths, kMagmaPillar, kHeatMantle, kStarfall, kGlutkernMoveCount };
+// CalamityFlames: Feuer-Technik. Core Rule "Hitze-Stacks" (Brennen). Entzündet Holz in der Welt.
+const TechniqueDef& calamityFlames();
+enum CalamityFlamesMove : int16_t { kEmberMoths, kMagmaPillar, kHeatMantle, kFallingStar, kCalamityFlamesMoveCount };
 
 } // namespace fc::techniques
 
 namespace fc::techniques {
 
-// Schattenmenagerie: Beschwörer-Technik auf Basis des Begleiter-Systems.
-const TechniqueDef& schattenmenagerie();
-enum SchattenMove : int16_t { kCallHounds, kCallWing, kCallMaw, kFloodColossus, kSchattenMoveCount };
+// ShadowPuppets: Beschwörer-Technik auf Basis des Begleiter-Systems.
+const TechniqueDef& shadowPuppets();
+enum ShadowMove : int16_t { kCallHounds, kCallWing, kCallMaw, kFloodColossus, kShadowMoveCount };
 
 } // namespace fc::techniques

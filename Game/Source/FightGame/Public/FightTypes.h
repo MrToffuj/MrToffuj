@@ -17,13 +17,13 @@ enum class EFightMode : uint8
 UENUM(BlueprintType)
 enum class EFightBody : uint8
 {
-	Heavy, Speedster, Caster, Brawler, Technician, Summoner, Nullborn
+	Heavy, Speedster, Caster, Brawler, Technician, Summoner, HeavensBind
 };
 
 UENUM(BlueprintType)
 enum class EFightTechnique : uint8
 {
-	None, Nullraum, Glutkern, Schattenmenagerie
+	None, Boundless, CalamityFlames, ShadowPuppets
 };
 
 UENUM(BlueprintType)
@@ -36,7 +36,7 @@ enum class EFightAssist : uint8
 UENUM(BlueprintType)
 enum class EFightImpactKind : uint8
 {
-	Hit, Block, Parry, Nullified, ZeroSpark, SureHit,
+	Hit, Block, Parry, Nullified, BlackSpark, GuaranteedHit,
 	GroundSlam, Landing, DashDust, WallSplat, WallBreak,
 	ProjectileBurst, TechniqueFx, Burst,
 	RealmOpen, RealmClash, RealmEnd,

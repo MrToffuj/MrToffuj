@@ -60,7 +60,7 @@ static FrameInput randomInput(uint32_t& seed) {
 static void testBodiesBalanced() {
     std::puts("bodies: 10 Punkte");
     for (const BodyDef* b : {&bodies::heavy(), &bodies::speedster(), &bodies::caster(), &bodies::brawler(),
-                             &bodies::technician(), &bodies::summoner(), &bodies::nullborn()})
+                             &bodies::technician(), &bodies::summoner(), &bodies::heavensBind()})
         CHECK(b->valid());
     CHECK(deriveStats(bodies::heavy()).maxHealth > deriveStats(bodies::speedster()).maxHealth);
     CHECK(deriveStats(bodies::speedster()).dashSpeed > deriveStats(bodies::heavy()).dashSpeed);
@@ -69,7 +69,7 @@ static void testBodiesBalanced() {
 
 static void testDeterminismAndRollback() {
     std::puts("determinism + rollback (fuzz, alle Buttons)");
-    const MatchSetup s = makeSetup(bodies::heavy(), &nullraum(), bodies::caster(), &glutkern());
+    const MatchSetup s = makeSetup(bodies::heavy(), &boundless(), bodies::caster(), &calamityFlames());
     MatchState a = createMatch(s), b = createMatch(s);
     a.f[0].realmMeter = b.f[0].realmMeter = kRealmMeterMax;
     a.f[1].realmMeter = b.f[1].realmMeter = kRealmMeterMax;
@@ -92,7 +92,7 @@ static void testDeterminismAndRollback() {
 
 static void testCompanionFuzz() {
     std::puts("determinism + rollback mit Begleitern (fuzz)");
-    const MatchSetup s = makeSetup(bodies::summoner(), &schattenmenagerie(), bodies::caster(), &glutkern(),
+    const MatchSetup s = makeSetup(bodies::summoner(), &shadowPuppets(), bodies::caster(), &calamityFlames(),
                                    &companions::stoneWarden());
     MatchState a = createMatch(s), b = createMatch(s);
     uint32_t sa = 99, sb = 99;
@@ -114,7 +114,7 @@ static void testCompanionFuzz() {
 
 static void testMovementRelativeToOpponent() {
     std::puts("stick: hoch = zum gegner, seitlich = umkreisen");
-    const MatchSetup s = makeSetup(bodies::brawler(), &glutkern(), bodies::brawler(), &glutkern());
+    const MatchSetup s = makeSetup(bodies::brawler(), &calamityFlames(), bodies::brawler(), &calamityFlames());
     MatchState m = createMatch(s);
     const Fx start = length(m.f[1].pos - m.f[0].pos);
     run(m, s, 30, [](int, FrameInput& p0, FrameInput&) { p0.dir = 8; });
@@ -129,7 +129,7 @@ static void testMovementRelativeToOpponent() {
 
 static void testHitBlockParryGrab() {
     std::puts("hit / block / parry / grab");
-    const MatchSetup s = makeSetup(bodies::brawler(), &glutkern(), bodies::brawler(), &glutkern());
+    const MatchSetup s = makeSetup(bodies::brawler(), &calamityFlames(), bodies::brawler(), &calamityFlames());
     const int16_t full = s.stats[1].maxHealth;
 
     MatchState m = closeRange(s);
@@ -154,9 +154,9 @@ static void testHitBlockParryGrab() {
     CHECK(m.f[1].health < full);
 }
 
-static void testZeroSpark() {
+static void testBlackSpark() {
     std::puts("nullfunke (perfektes Timing)");
-    const MatchSetup s = makeSetup(bodies::caster(), &glutkern(), bodies::heavy(), &glutkern());
+    const MatchSetup s = makeSetup(bodies::caster(), &calamityFlames(), bodies::heavy(), &calamityFlames());
     MatchState probe = closeRange(s);
     run(probe, s, 10, press(BtnLight));
     const int32_t link = probe.f[0].linkFrame;
@@ -166,7 +166,7 @@ static void testZeroSpark() {
         MatchState m = closeRange(s);
         EventSink ev;
         run(m, s, 40, [&](int f, FrameInput& p0, FrameInput&) { if (f == 0 || f == secondPress) p0.buttons = BtnLight; }, &ev);
-        return saw(ev, ImpactKind::ZeroSpark);
+        return saw(ev, ImpactKind::BlackSpark);
     };
     CHECK(attempt(link));
     CHECK(!attempt(link + 3));
@@ -174,7 +174,7 @@ static void testZeroSpark() {
 
 static void testSuperArmor() {
     std::puts("heavy body: super armor");
-    const MatchSetup s = makeSetup(bodies::heavy(), &glutkern(), bodies::speedster(), &glutkern());
+    const MatchSetup s = makeSetup(bodies::heavy(), &calamityFlames(), bodies::speedster(), &calamityFlames());
     MatchState m = closeRange(s);
     EventSink ev;
     run(m, s, 25, press(BtnHeavy, BtnLight), &ev);
@@ -184,7 +184,7 @@ static void testSuperArmor() {
 
 static void testSkillsCooldownBurnout() {
     std::puts("skills: kosten, cooldown, burnout");
-    const MatchSetup s = makeSetup(bodies::caster(), &glutkern(), bodies::heavy(), &glutkern());
+    const MatchSetup s = makeSetup(bodies::caster(), &calamityFlames(), bodies::heavy(), &calamityFlames());
     MatchState m = createMatch(s);
     const int32_t ce0 = m.f[0].ce;
     run(m, s, 2, press(BtnMod | BtnLight));
@@ -205,21 +205,21 @@ static void testSkillsCooldownBurnout() {
     CHECK(m.f[0].state != FState::Attack);
 }
 
-static void testApex() {
-    std::puts("apex: 50 % Essenz, einmal pro Runde");
-    const MatchSetup s = makeSetup(bodies::caster(), &nullraum(), bodies::heavy(), &glutkern());
+static void testMaxOutput() {
+    std::puts("maxOutput: 50 % Essenz, einmal pro Runde");
+    const MatchSetup s = makeSetup(bodies::caster(), &boundless(), bodies::heavy(), &calamityFlames());
     MatchState m = createMatch(s);
     const int32_t full = m.f[0].ce;
     run(m, s, 2, press(BtnUlt));
-    CHECK(m.f[0].apexUsed && m.f[0].ce <= full / 2 + 100);
+    CHECK(m.f[0].maxOutputUsed && m.f[0].ce <= full / 2 + 100);
     m.f[0].state = FState::Idle; m.f[0].ce = full;
     run(m, s, 2, press(BtnUlt));
     CHECK(m.f[0].state != FState::Attack);
 }
 
-static void testRealmLockAndNullborn() {
+static void testRealmLockAndHeavensBind() {
     std::puts("realm: meter, lock, nullgeboren immun");
-    MatchSetup s = makeSetup(bodies::technician(), &nullraum(), bodies::brawler(), &glutkern());
+    MatchSetup s = makeSetup(bodies::technician(), &boundless(), bodies::brawler(), &calamityFlames());
     MatchState m = createMatch(s);
     run(m, s, 2, press(BtnMod | BtnUlt));
     CHECK(m.f[0].state != FState::Attack); // Meter leer
@@ -231,7 +231,7 @@ static void testRealmLockAndNullborn() {
     CHECK(m.f[0].realm.active() && saw(ev, ImpactKind::RealmOpen));
     CHECK(m.f[1].state == FState::Locked);
 
-    s = makeSetup(bodies::technician(), &nullraum(), bodies::nullborn(), nullptr);
+    s = makeSetup(bodies::technician(), &boundless(), bodies::heavensBind(), nullptr);
     m = createMatch(s);
     m.f[0].realmMeter = kRealmMeterMax;
     run(m, s, kRealmCastFrames + 3, press(BtnMod | BtnUlt));
@@ -240,7 +240,7 @@ static void testRealmLockAndNullborn() {
 
 static void testRealmClash() {
     std::puts("realm clash (input-duell)");
-    const MatchSetup s = makeSetup(bodies::caster(), &glutkern(), bodies::caster(), &nullraum());
+    const MatchSetup s = makeSetup(bodies::caster(), &calamityFlames(), bodies::caster(), &boundless());
     MatchState m = createMatch(s);
     m.f[0].realmMeter = m.f[1].realmMeter = kRealmMeterMax;
     // P0 öffnet zuerst, P1 kontert 10 Frames später mit eigenem Realm und hämmert dann Light
@@ -252,15 +252,15 @@ static void testRealmClash() {
     CHECK(m.f[1].realm.active() && !m.f[0].realm.active());
 }
 
-static void testWardBlocksSureHit() {
+static void testWardBlocksGuaranteedHit() {
     std::puts("schutzkreis gegen sure-hit");
-    const MatchSetup s = makeSetup(bodies::caster(), &glutkern(), bodies::technician(), &nullraum());
-    auto runRealm = [&](bool ward) {
+    const MatchSetup s = makeSetup(bodies::caster(), &calamityFlames(), bodies::technician(), &boundless());
+    auto runRealm = [&](bool simpleRealm) {
         MatchState m = createMatch(s);
         m.f[0].realmMeter = kRealmMeterMax;
         run(m, s, kRealmCastFrames + 120, [&](int f, FrameInput& p0, FrameInput& p1) {
             if (f == 0) p0.buttons = BtnMod | BtnUlt;
-            if (ward && f > kRealmCastFrames + 2) p1.buttons = BtnUlt;
+            if (simpleRealm && f > kRealmCastFrames + 2) p1.buttons = BtnUlt;
         });
         return m.f[1].health;
     };
@@ -269,9 +269,9 @@ static void testWardBlocksSureHit() {
     CHECK(with > without);
 }
 
-static void testNullraumField() {
-    std::puts("nullraum: distanzfeld blockt lights, nicht grabs");
-    const MatchSetup s = makeSetup(bodies::brawler(), &glutkern(), bodies::caster(), &nullraum());
+static void testBoundlessField() {
+    std::puts("boundless: distanzfeld blockt lights, nicht grabs");
+    const MatchSetup s = makeSetup(bodies::brawler(), &calamityFlames(), bodies::caster(), &boundless());
     MatchState m = closeRange(s);
     EventSink ev;
     run(m, s, 10, press(BtnLight), &ev);
@@ -287,9 +287,9 @@ static void testNullraumField() {
     CHECK(m.f[1].health < s.stats[1].maxHealth); // Schwäche: Burnout = kein Feld
 }
 
-static void testGlutkernBurn() {
-    std::puts("glutkern: hitze-stacks + ignite");
-    const MatchSetup s = makeSetup(bodies::caster(), &glutkern(), bodies::heavy(), &glutkern());
+static void testCalamityFlamesBurn() {
+    std::puts("calamityFlames: hitze-stacks + ignite");
+    const MatchSetup s = makeSetup(bodies::caster(), &calamityFlames(), bodies::heavy(), &calamityFlames());
     MatchState m = createMatch(s);
     EventSink ev;
     run(m, s, 80, press(BtnMod | BtnLight), &ev); // Glutfalter
@@ -302,7 +302,7 @@ static void testGlutkernBurn() {
 
 static void testBurstFromHitstun() {
     std::puts("essenz-burst aus hitstun");
-    const MatchSetup s = makeSetup(bodies::brawler(), &glutkern(), bodies::brawler(), &glutkern());
+    const MatchSetup s = makeSetup(bodies::brawler(), &calamityFlames(), bodies::brawler(), &calamityFlames());
     MatchState m = closeRange(s);
     EventSink ev;
     run(m, s, 25, [](int f, FrameInput& p0, FrameInput& p1) {
@@ -314,47 +314,61 @@ static void testBurstFromHitstun() {
     CHECK(m.f[0].state == FState::Hitstun);
 }
 
-static void testWallBreak() {
-    std::puts("zerstörbare wand");
-    const MatchSetup s = makeSetup(bodies::brawler(), &glutkern(), bodies::brawler(), &glutkern());
+static void testScenery() {
+    std::puts("map: pillars break, barrier holds");
+    const MatchSetup s = makeSetup(bodies::brawler(), &calamityFlames(), bodies::brawler(), &calamityFlames());
     MatchState m = createMatch(s);
     EventSink ev;
-    for (int hit = 0; hit < 20 && !m.walls[0].broken; ++hit) {
+    // Shrine Ward has a pillar at x = 7; keep throwing P2 into it
+    for (int hit = 0; hit < 20 && !m.obstacles[0].broken; ++hit) {
         FighterState& f = m.f[1];
-        f.pos = {s.stage.halfExtent - Fx::ratio(1, 2), Fx{}, Fx{}};
+        f.pos = {Fx::ratio(55, 10), Fx{}, Fx{}};
         f.vel = {Fx::ratio(6, 10), Fx{}, Fx{}};
         f.state = FState::Hitstun;
         f.stun = 20;
         run(m, s, 3, [](int, FrameInput&, FrameInput&) {}, &ev);
     }
-    CHECK(saw(ev, ImpactKind::WallSplat) && saw(ev, ImpactKind::WallBreak) && m.walls[0].broken);
+    CHECK(saw(ev, ImpactKind::WallSplat) && saw(ev, ImpactKind::WallBreak) && m.obstacles[0].broken);
+
+    // The barrier never breaks and nobody gets out
+    ev.clear();
+    for (int hit = 0; hit < 30; ++hit) {
+        FighterState& f = m.f[1];
+        f.pos = {Fx{}, Fx{}, Fx::fromInt(12)};
+        f.vel = {Fx{}, Fx{}, Fx::fromInt(1)};
+        f.state = FState::Hitstun;
+        f.stun = 20;
+        run(m, s, 4, [](int, FrameInput&, FrameInput&) {}, &ev);
+        CHECK(length(Vec3{f.pos.x, Fx{}, f.pos.z}) <= mapOf(s).radius);
+    }
+    CHECK(saw(ev, ImpactKind::BarrierHit));
 }
 
-static void testPacts() {
+static void testOaths() {
     std::puts("pakte: versteckter wert");
     PlaystyleProfile p;
-    PactChoice regenLarge{true, PactCategory::Resource, PactSize::Large, 1};
-    PactResult caster = evaluatePact(regenLarge, bodies::caster(), &glutkern(), p);
-    PactChoice regenSmall{true, PactCategory::Resource, PactSize::Small, 1};
-    PactResult heavy = evaluatePact(regenSmall, bodies::heavy(), &glutkern(), p);
+    OathChoice regenLarge{true, OathCategory::Resource, OathSize::Large, 1};
+    OathResult caster = evaluateOath(regenLarge, bodies::caster(), &calamityFlames(), p);
+    OathChoice regenSmall{true, OathCategory::Resource, OathSize::Small, 1};
+    OathResult heavy = evaluateOath(regenSmall, bodies::heavy(), &calamityFlames(), p);
     CHECK(caster.hiddenValue > heavy.hiddenValue);
-    CHECK(caster.tier >= PactTier::High && caster.mods.openRealm);
+    CHECK(caster.tier >= OathTier::High && caster.mods.openRealm);
     CHECK(caster.mods.ceRegenPct < 100);
-    CHECK(heavy.tier == PactTier::Fair || heavy.tier == PactTier::TooCheap);
+    CHECK(heavy.tier == OathTier::Fair || heavy.tier == OathTier::TooCheap);
 
     // Ungenutzter Skill opfern = fast wertlos -> Backlash
     p.skillUsage[2] = 0;
-    PactResult unused = evaluatePact({true, PactCategory::Technique, PactSize::Large, 2}, bodies::caster(), &glutkern(), p);
-    CHECK(unused.tier == PactTier::TooCheap && unused.mods.ceLeak > 0);
+    OathResult unused = evaluateOath({true, OathCategory::Technique, OathSize::Large, 2}, bodies::caster(), &calamityFlames(), p);
+    CHECK(unused.tier == OathTier::TooCheap && unused.mods.ceLeak > 0);
 
     // Nullgeboren: begrenzter Pakt-Stack
-    PactResult nb = evaluatePact({true, PactCategory::Body, PactSize::Large, 1}, bodies::nullborn(), nullptr, p);
+    OathResult nb = evaluateOath({true, OathCategory::Body, OathSize::Large, 1}, bodies::heavensBind(), nullptr, p);
     CHECK(nb.hiddenValue <= 12);
 
     // Pakt wirkt im Match: Restriktion + verbotener Skill
-    MatchSetup s = makeSetup(bodies::caster(), &glutkern(), bodies::heavy(), &glutkern());
-    s.loadout[0].pact = regenLarge;
-    s.loadout[1].pact = {true, PactCategory::Technique, PactSize::Medium, 0};
+    MatchSetup s = makeSetup(bodies::caster(), &calamityFlames(), bodies::heavy(), &calamityFlames());
+    s.loadout[0].oath = regenLarge;
+    s.loadout[1].oath = {true, OathCategory::Technique, OathSize::Medium, 0};
     s.finalize();
     MatchState m = createMatch(s);
     run(m, s, 2, press(0, BtnMod | BtnLight));
@@ -370,7 +384,7 @@ static Script assist(uint8_t dir, int at = 0) {
 
 static void testSummonerAssist() {
     std::puts("begleiter: summoner-assist, 60 %-cap, upkeep, cooldown");
-    const MatchSetup s = makeSetup(bodies::summoner(), &glutkern(), bodies::brawler(), &glutkern(), &companions::bladeWolf());
+    const MatchSetup s = makeSetup(bodies::summoner(), &calamityFlames(), bodies::brawler(), &calamityFlames(), &companions::bladeWolf());
     MatchState m = createMatch(s);
     CHECK(m.f[0].comp[0].onField());
     CHECK(m.f[1].comp[0].roster < 0); // Brawler hat keinen Begleiter
@@ -396,7 +410,7 @@ static void testSummonerAssist() {
 
 static void testAssistRoles() {
     std::puts("begleiter: richtung = rolle");
-    const MatchSetup s = makeSetup(bodies::summoner(), &glutkern(), bodies::brawler(), &glutkern(), &companions::bladeWolf());
+    const MatchSetup s = makeSetup(bodies::summoner(), &calamityFlames(), bodies::brawler(), &calamityFlames(), &companions::bladeWolf());
     const std::pair<uint8_t, AssistRole> cases[] = {
         {5, AssistRole::Attack}, {8, AssistRole::Pressure}, {6, AssistRole::AntiAir}, {2, AssistRole::Protect}};
     for (auto [dir, role] : cases) {
@@ -408,7 +422,7 @@ static void testAssistRoles() {
 
 static void testLeash() {
     std::puts("begleiter: leash bei treffer auf spieler");
-    const MatchSetup s = makeSetup(bodies::summoner(), &glutkern(), bodies::brawler(), &glutkern(), &companions::sparkOwl());
+    const MatchSetup s = makeSetup(bodies::summoner(), &calamityFlames(), bodies::brawler(), &calamityFlames(), &companions::sparkOwl());
     MatchState m = closeRange(s);
     run(m, s, 3, [](int f, FrameInput& p0, FrameInput& p1) {
         if (f == 0) { p0.buttons = BtnAssist; p1.buttons = BtnLight; }
@@ -421,7 +435,7 @@ static void testLeash() {
 
 static void testGuardShield() {
     std::puts("begleiter: waechter blockt fuer den spieler");
-    const MatchSetup s = makeSetup(bodies::summoner(), &glutkern(), bodies::brawler(), &glutkern(), &companions::stoneWarden());
+    const MatchSetup s = makeSetup(bodies::summoner(), &calamityFlames(), bodies::brawler(), &calamityFlames(), &companions::stoneWarden());
     MatchState m = closeRange(s);
     run(m, s, 20, assist(2));
     const int16_t compHp = m.f[0].comp[0].hp;
@@ -432,7 +446,7 @@ static void testGuardShield() {
 
 static void testCompanionDownAndRevive() {
     std::puts("begleiter: faellt aus, kehrt nach 15 s zurueck (kostet essenz)");
-    const MatchSetup s = makeSetup(bodies::summoner(), &glutkern(), bodies::brawler(), &glutkern(), &companions::bladeWolf());
+    const MatchSetup s = makeSetup(bodies::summoner(), &calamityFlames(), bodies::brawler(), &calamityFlames(), &companions::bladeWolf());
     MatchState m = createMatch(s);
     m.f[0].bond = 3;
     EventSink ev;
@@ -461,8 +475,8 @@ static void testCompanionDownAndRevive() {
 }
 
 static void testShadowMenagerie() {
-    std::puts("schattenmenagerie: beschwoeren, max 2, gefallene sind weg");
-    const MatchSetup s = makeSetup(bodies::caster(), &schattenmenagerie(), bodies::brawler(), &glutkern());
+    std::puts("shadowPuppets: beschwoeren, max 2, gefallene sind weg");
+    const MatchSetup s = makeSetup(bodies::caster(), &shadowPuppets(), bodies::brawler(), &calamityFlames());
     MatchState m = createMatch(s);
     auto skill = [&](uint16_t btn) {
         m.f[0].cooldown = {0, 0, 0};
@@ -500,7 +514,7 @@ static void testShadowMenagerie() {
 
 static void testBondLinkAttack() {
     std::puts("bond: stufe 2 link-attack");
-    const MatchSetup s = makeSetup(bodies::summoner(), &glutkern(), bodies::heavy(), &glutkern(), &companions::bladeWolf());
+    const MatchSetup s = makeSetup(bodies::summoner(), &calamityFlames(), bodies::heavy(), &calamityFlames(), &companions::bladeWolf());
     MatchState m = closeRange(s);
     m.f[0].bond = 3;
     CHECK(bondLevel(m.f[0]) == 2);
@@ -518,7 +532,7 @@ static void testBondLinkAttack() {
 
 static void testRealmHitsCompanions() {
     std::puts("begleiter sind nicht realm-immun");
-    const MatchSetup s = makeSetup(bodies::caster(), &glutkern(), bodies::summoner(), &glutkern());
+    const MatchSetup s = makeSetup(bodies::caster(), &calamityFlames(), bodies::summoner(), &calamityFlames());
     MatchState m = createMatch(s);
     m.f[0].realmMeter = kRealmMeterMax;
     const int16_t hp = m.f[1].comp[0].hp;
@@ -526,21 +540,21 @@ static void testRealmHitsCompanions() {
     CHECK(m.f[1].comp[0].hp < hp);
 }
 
-static void testCompanionPacts() {
+static void testCompanionOaths() {
     std::puts("pakte: begleiter-opfer, zusatz-begleiter, wandler");
     PlaystyleProfile p;
     // Kein Begleiter -> Begleiter opfern ist wertlos
-    PactResult none = evaluatePact({true, PactCategory::Companion, PactSize::Large, 2}, bodies::brawler(), &glutkern(), p);
-    CHECK(none.tier == PactTier::TooCheap);
+    OathResult none = evaluateOath({true, OathCategory::Companion, OathSize::Large, 2}, bodies::brawler(), &calamityFlames(), p);
+    CHECK(none.tier == OathTier::TooCheap);
     // Summoner opfert Slot groß -> überzahlt -> Wandler
-    PactResult big = evaluatePact({true, PactCategory::Companion, PactSize::Large, 1}, bodies::summoner(), &glutkern(), p);
-    CHECK(big.tier == PactTier::Overpaid && big.mods.bonusCompanion == 2);
+    OathResult big = evaluateOath({true, OathCategory::Companion, OathSize::Large, 1}, bodies::summoner(), &calamityFlames(), p);
+    CHECK(big.tier == OathTier::Overpaid && big.mods.bonusCompanion == 2);
     // Andere Bodies: Begleiter nur über zeitlich begrenzten Pakt
-    PactResult timed = evaluatePact({true, PactCategory::Time, PactSize::Large, 0}, bodies::brawler(), &glutkern(), p);
-    CHECK(timed.tier >= PactTier::High && timed.mods.bonusCompanion == 1 && timed.mods.durationFrames > 0);
+    OathResult timed = evaluateOath({true, OathCategory::Time, OathSize::Large, 0}, bodies::brawler(), &calamityFlames(), p);
+    CHECK(timed.tier >= OathTier::High && timed.mods.bonusCompanion == 1 && timed.mods.durationFrames > 0);
 
-    MatchSetup s = makeSetup(bodies::brawler(), &glutkern(), bodies::heavy(), &glutkern());
-    s.loadout[0].pact = {true, PactCategory::Time, PactSize::Large, 0};
+    MatchSetup s = makeSetup(bodies::brawler(), &calamityFlames(), bodies::heavy(), &calamityFlames());
+    s.loadout[0].oath = {true, OathCategory::Time, OathSize::Large, 0};
     s.finalize();
     MatchState m = createMatch(s);
     CHECK(m.f[0].comp[0].onField() && m.f[0].comp[0].expires > 0);
@@ -548,8 +562,8 @@ static void testCompanionPacts() {
     CHECK(!m.f[0].comp[0].onField());
 
     // Wandler passt sich an: gleiche Kategorie zweimal -> zweiter Treffer halb
-    s = makeSetup(bodies::summoner(), &glutkern(), bodies::heavy(), &glutkern());
-    s.loadout[0].pact = {true, PactCategory::Companion, PactSize::Large, 1};
+    s = makeSetup(bodies::summoner(), &calamityFlames(), bodies::heavy(), &calamityFlames());
+    s.loadout[0].oath = {true, OathCategory::Companion, OathSize::Large, 1};
     s.finalize();
     m = createMatch(s);
     int slot = -1;
@@ -560,7 +574,7 @@ static void testCompanionPacts() {
 
 static void testRollbackSession() {
     std::puts("rollback-session: 2 peers mit 4 frames verzoegerung");
-    const MatchSetup s = makeSetup(bodies::summoner(), &schattenmenagerie(), bodies::caster(), &nullraum());
+    const MatchSetup s = makeSetup(bodies::summoner(), &shadowPuppets(), bodies::caster(), &boundless());
     // Referenz: alle Inputs sofort bekannt
     std::vector<FrameInput> in[2];
     uint32_t seed = 1234;
@@ -597,8 +611,8 @@ static FrameInput none20[kMaxFighters] = {};
 static void testTeamsNoFriendlyFire() {
     std::puts("2v2: teams, kein friendly fire, elimination");
     Loadout humans[2];
-    humans[0] = {&bodies::brawler(), &glutkern(), {}, {}, nullptr, 0};
-    humans[1] = {&bodies::brawler(), &glutkern(), {}, {}, nullptr, 0};
+    humans[0] = {&bodies::brawler(), &calamityFlames(), {}, {}, nullptr, 0};
+    humans[1] = {&bodies::brawler(), &calamityFlames(), {}, {}, nullptr, 0};
     MatchSetup s = buildMatch(GameMode::Teams, humans, 2, 1, 7);
     CHECK(s.count == 4);
     int team0 = 0;
@@ -641,7 +655,7 @@ static void testTargetSwitch() {
 
 static void testBotFightsBack() {
     std::puts("bot: greift einen passiven spieler an");
-    Loadout human{&bodies::brawler(), &glutkern(), {}, {}, nullptr, 0};
+    Loadout human{&bodies::brawler(), &calamityFlames(), {}, {}, nullptr, 0};
     MatchSetup s = buildMatch(GameMode::Duel, &human, 1, 2, 11);
     CHECK(s.loadout[1].bot);
     MatchState m = createMatch(s);
@@ -677,18 +691,17 @@ static void testBrawl20Bots() {
     std::printf("  20 Kaempfer: %.3f ms pro Frame, %d K.O.s in 100 s\n", ms / 6000.0, kos);
     CHECK(ms / 6000.0 < 1.0); // weit unter dem 16,6-ms-Budget
 
-    // Zeitlimit beendet das Match
-    MatchState end = createMatch(s);
-    end.frame = rulesFor(GameMode::Brawl).timeLimitFrames - 2;
-    step(end, s, none20);
-    step(end, s, none20);
-    CHECK(end.winner != kNoWinner);
+    // Open brawl: no time limit, no lives, it just keeps going
+    MatchState late = createMatch(s);
+    late.frame = 1000000;
+    for (int f = 0; f < 10; ++f) step(late, s, none20);
+    CHECK(late.winner == kNoWinner);
 }
 
 static void testSessionTeams() {
     std::puts("rollback-session: 2v2, 2 menschen online + 2 bots");
-    Loadout humans[2] = {{&bodies::speedster(), &nullraum(), {}, {}, nullptr, 0},
-                         {&bodies::heavy(), &glutkern(), {}, {}, nullptr, 1}};
+    Loadout humans[2] = {{&bodies::speedster(), &boundless(), {}, {}, nullptr, 0},
+                         {&bodies::heavy(), &calamityFlames(), {}, {}, nullptr, 1}};
     const MatchSetup s = buildMatch(GameMode::Teams, humans, 2, 1, 5);
     std::vector<FrameInput> in[2];
     uint32_t seed = 77;
@@ -711,23 +724,148 @@ static void testSessionTeams() {
     CHECK(hashState(a.state()) == hashState(ref) && hashState(b.state()) == hashState(ref));
 }
 
+// ------------------------------------------------------------------ Custom mode objectives
+
+static ModeRules customRules(Objective o, int teams) {
+    ModeRules r = rulesFor(GameMode::Custom);
+    r.objective = o;
+    r.teamCount = static_cast<uint8_t>(teams);
+    return r;
+}
+
+static void park(MatchState& m, const MatchSetup& s) {
+    // Everyone stands far apart, out of the way
+    for (int i = 0; i < m.count; ++i) {
+        m.f[i].pos = {Fx::fromInt(-60 + (i % 10) * 12), Fx{}, Fx::fromInt(i < 10 ? 55 : -55)};
+        (void)s;
+    }
+}
+
+static void testCaptureTheFlag() {
+    std::puts("custom: capture the flag");
+    MatchSetup s = buildMatch(GameMode::Custom, customRules(Objective::CaptureTheFlag, 2), nullptr, 0, 1, 9);
+    for (int i = 0; i < s.count; ++i) s.loadout[i].bot = false;
+    MatchState m = createMatch(s);
+    park(m, s);
+    int runner = -1;
+    for (int i = 0; i < m.count && runner < 0; ++i) if (m.f[i].team == 0) runner = i;
+    EventSink ev;
+    // Grab team 1's flag ...
+    m.f[runner].pos = m.objective.flags[1].pos;
+    step(m, s, none20, &ev);
+    CHECK(m.objective.flags[1].carrier == runner && saw(ev, ImpactKind::FlagTaken));
+    // ... carriers can't use their technique ...
+    m.f[runner].ce = s.stats[runner].ceMax;
+    FrameInput in[kMaxFighters] = {};
+    in[runner].buttons = BtnMod | BtnLight;
+    step(m, s, in);
+    CHECK(m.f[runner].state != FState::Attack || m.f[runner].moveId < kTechMoveOffset);
+    // ... and bring it home
+    m.f[runner].state = FState::Idle;
+    m.f[runner].pos = m.objective.flags[0].pos;
+    ev.clear();
+    step(m, s, none20, &ev);
+    CHECK(saw(ev, ImpactKind::FlagCaptured) && m.objective.score[0] == 1 && m.objective.flags[1].home);
+}
+
+static void testOddball() {
+    std::puts("custom: oddball, 4 teams");
+    MatchSetup s = buildMatch(GameMode::Custom, customRules(Objective::Oddball, 4), nullptr, 0, 1, 4);
+    int perTeam[4] = {};
+    for (int i = 0; i < s.count; ++i) { s.loadout[i].bot = false; ++perTeam[s.loadout[i].team]; }
+    CHECK(perTeam[0] == 5 && perTeam[3] == 5);
+    MatchState m = createMatch(s);
+    park(m, s);
+    m.f[7].pos = m.objective.ballPos;
+    for (int f = 0; f < 181; ++f) step(m, s, none20);
+    CHECK(m.objective.ballCarrier == 7 && m.objective.score[m.f[7].team] == 3);
+    m.f[7].health = 0;
+    step(m, s, none20);
+    CHECK(m.objective.ballCarrier < 0);
+}
+
+static void testCheckpoints() {
+    std::puts("custom: checkpoints");
+    MatchSetup s = buildMatch(GameMode::Custom, customRules(Objective::Checkpoints, 2), nullptr, 0, 1, 4);
+    for (int i = 0; i < s.count; ++i) s.loadout[i].bot = false;
+    MatchState m = createMatch(s);
+    park(m, s);
+    int a = -1, b = -1;
+    for (int i = 0; i < m.count; ++i) {
+        if (m.f[i].team == 0 && a < 0) a = i;
+        if (m.f[i].team == 1 && b < 0) b = i;
+    }
+    const Vec3 zone = mapOf(s).zones[0];
+    m.f[a].pos = zone;
+    m.f[b].pos = zone + Vec3{Fx::fromInt(1), Fx{}, Fx{}};
+    for (int f = 0; f < 300; ++f) { m.f[a].pos = zone; m.f[b].pos = zone + Vec3{Fx::fromInt(1), Fx{}, Fx{}}; step(m, s, none20); }
+    CHECK(m.objective.zones[0].owner < 0); // contested: nobody takes it
+    m.f[b].pos = Vec3{Fx::fromInt(50), Fx{}, Fx::fromInt(50)};
+    for (int f = 0; f < 300; ++f) { m.f[a].pos = zone; step(m, s, none20); }
+    CHECK(m.objective.zones[0].owner == 0 && m.objective.score[0] > 0);
+}
+
+static void testFriendlyFireAndFfaDeathmatch() {
+    std::puts("custom: friendly fire, ffa deathmatch with score limit");
+    ModeRules r = customRules(Objective::Deathmatch, 2);
+    r.friendlyFire = true;
+    r.fighters = 4;
+    MatchSetup s = buildMatch(GameMode::Custom, r, nullptr, 0, 1, 4);
+    for (int i = 0; i < s.count; ++i) s.loadout[i].bot = false;
+    MatchState m = createMatch(s);
+    int a = 0, ally = -1;
+    for (int i = 1; i < m.count; ++i) if (m.f[i].team == m.f[a].team) ally = i;
+    // Ally stands right between P1 and the enemy P1 is locked on to
+    const Vec3 toTarget = normalizeXZ(m.f[m.f[a].target].pos - m.f[a].pos, m.f[a].facing);
+    m.f[ally].pos = m.f[a].pos + toTarget * Fx::ratio(14, 10);
+    const int16_t hp = m.f[ally].health;
+    FrameInput in[kMaxFighters] = {};
+    in[a].buttons = BtnHeavy; // Heavy, because a Boundless ally would auto-block a Light
+    step(m, s, in);
+    for (int f = 0; f < 20; ++f) step(m, s, none20);
+    CHECK(m.f[ally].health < hp);
+
+    ModeRules ffa = customRules(Objective::Deathmatch, 0);
+    ffa.fighters = 6;
+    ffa.scoreLimit = 2;
+    MatchSetup s2 = buildMatch(GameMode::Custom, ffa, nullptr, 0, 1, 4);
+    for (int i = 0; i < s2.count; ++i) s2.loadout[i].bot = false;
+    MatchState m2 = createMatch(s2);
+    for (int k = 1; k <= 2; ++k) { m2.f[k].health = 0; m2.f[k].lastHitBy = 0; step(m2, s2, none20); }
+    CHECK(m2.f[0].kos == 2 && m2.winner == 0);
+}
+
+static void testBotsPlayObjective() {
+    std::puts("bots: 20 bots playing capture the flag score");
+    const MatchSetup s = buildMatch(GameMode::Custom, customRules(Objective::CaptureTheFlag, 2), nullptr, 0, 2, 21);
+    MatchState m = createMatch(s);
+    bool taken = false;
+    EventSink ev;
+    for (int f = 0; f < 3 * 60 * 60 && !taken; ++f) {
+        ev.clear();
+        step(m, s, none20, &ev);
+        taken = saw(ev, ImpactKind::FlagTaken);
+    }
+    CHECK(taken);
+}
+
 int main() {
     testBodiesBalanced();
     testDeterminismAndRollback();
     testMovementRelativeToOpponent();
     testHitBlockParryGrab();
-    testZeroSpark();
+    testBlackSpark();
     testSuperArmor();
     testSkillsCooldownBurnout();
-    testApex();
-    testRealmLockAndNullborn();
+    testMaxOutput();
+    testRealmLockAndHeavensBind();
     testRealmClash();
-    testWardBlocksSureHit();
-    testNullraumField();
-    testGlutkernBurn();
+    testWardBlocksGuaranteedHit();
+    testBoundlessField();
+    testCalamityFlamesBurn();
     testBurstFromHitstun();
-    testWallBreak();
-    testPacts();
+    testScenery();
+    testOaths();
     testCompanionFuzz();
     testSummonerAssist();
     testAssistRoles();
@@ -737,13 +875,18 @@ int main() {
     testShadowMenagerie();
     testBondLinkAttack();
     testRealmHitsCompanions();
-    testCompanionPacts();
+    testCompanionOaths();
     testRollbackSession();
     testTeamsNoFriendlyFire();
     testTargetSwitch();
     testBotFightsBack();
     testBrawl20Bots();
     testSessionTeams();
+    testCaptureTheFlag();
+    testOddball();
+    testCheckpoints();
+    testFriendlyFireAndFfaDeathmatch();
+    testBotsPlayObjective();
     if (g_failed) { std::printf("%d check(s) failed\n", g_failed); return EXIT_FAILURE; }
     std::puts("all tests passed");
     return EXIT_SUCCESS;

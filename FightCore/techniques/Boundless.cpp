@@ -2,7 +2,7 @@
 // NULLRAUM
 //  Core Rule : Distanzfeld – blockt Projektile und Lights automatisch, kostet Essenz.
 //  Skills    : Abstoßung (Offense), Anziehung (Utility), Faltschritt (Movement)
-//  Apex      : Singularität (Burst)
+//  MaxOutput      : Singularität (Burst)
 //  Realm     : Ereignishorizont (Lock)
 //  Schwäche  : Essenz leer / Burnout = Feld weg. Grabs gehen immer durch.
 // ============================================================================
@@ -16,7 +16,7 @@ namespace {
 enum : int { kKnotTimer = 0, kKnotX = 1, kKnotZ = 2 };
 constexpr int32_t kFieldCost = 3000; // 30 Essenz pro abgefangenem Treffer
 
-class NullraumLogic final : public TechniqueLogic {
+class BoundlessLogic final : public TechniqueLogic {
 public:
     void onMoveEvent(const TechContext& c, int16_t move) const override {
         FighterState& me = c.me();
@@ -78,41 +78,41 @@ private:
     }
 };
 
-const NullraumLogic kLogic;
+const BoundlessLogic kLogic;
 
 TechniqueDef build() {
     TechniqueDef t;
-    t.name = "Nullraum";
-    t.coreRule = "Distanzfeld: Auto-Block gegen Projektile und Lights, kostet Essenz.";
-    t.weakness = "Ohne Essenz kein Feld. Grabs gehen immer durch.";
-    t.moves.resize(kNullraumMoveCount);
+    t.name = "Boundless";
+    t.coreRule = "Infinite Gap: auto-blocks projectiles and lights at a CE cost.";
+    t.weakness = "No CE, no gap. Grabs always go through.";
+    t.moves.resize(kBoundlessMoveCount);
     {
         MoveDef& m = t.moves[kRepel];
-        m.name = "Abstossung"; m.category = MoveCategory::Skill;
+        m.name = "Repel"; m.category = MoveCategory::Skill;
         m.startup = 11; m.active = 3; m.recovery = 20;
         m.hitboxes = {{{Fx{}, Fx::ratio(12, 10), Fx::ratio(12, 10)}, Fx::ratio(8, 10)}};
         m.hit = {80, 24, 14, 10, Fx::ratio(55, 100), Fx::ratio(8, 100), ImpactClass::Heavy, false};
     }
     {
         MoveDef& m = t.moves[kAttract];
-        m.name = "Anziehung"; m.category = MoveCategory::Skill;
+        m.name = "Attract"; m.category = MoveCategory::Skill;
         m.startup = 14; m.active = 0; m.recovery = 18; m.eventFrame = 14;
     }
     {
         MoveDef& m = t.moves[kFoldStep];
-        m.name = "Faltschritt"; m.category = MoveCategory::Skill;
+        m.name = "Fold Step"; m.category = MoveCategory::Skill;
         m.startup = 6; m.active = 0; m.recovery = 10; m.eventFrame = 6;
         m.invulnFirst = 4; m.invulnLast = 8;
     }
     {
         MoveDef& m = t.moves[kSingularity];
-        m.name = "Singularitaet"; m.category = MoveCategory::Apex;
+        m.name = "Singularity"; m.category = MoveCategory::MaxOutput;
         m.startup = 45; m.active = 0; m.recovery = 30; m.eventFrame = 45;
         m.hit = {300, 40, 20, 16, Fx::ratio(60, 100), Fx::ratio(20, 100), ImpactClass::Crushing, false};
     }
     t.skills = {{{kRepel, 80, 90}, {kAttract, 120, 240}, {kFoldStep, 60, 120}}};
-    t.apexMove = kSingularity;
-    t.apexType = ApexType::Burst;
+    t.maxOutputMove = kSingularity;
+    t.maxOutputType = MaxOutputType::Burst;
     t.realmClass = RealmClass::Lock;
     t.logic = &kLogic;
     return t;
@@ -120,7 +120,7 @@ TechniqueDef build() {
 
 } // namespace
 
-const TechniqueDef& nullraum() {
+const TechniqueDef& boundless() {
     static const TechniqueDef t = build();
     return t;
 }

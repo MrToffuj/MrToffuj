@@ -9,7 +9,7 @@ namespace fc {
 //  Schultern: Guard (R1), Mod (L1), Dash (R2), Ult (L2)
 //
 //  Mod + Light/Heavy/Grab  -> Skill 1/2/3 (Offense / Utility / Defense-Movement)
-//  Ult                     -> Apex-Technik (Maximum)
+//  Ult                     -> MaxOutput-Technik (Maximum)
 //  Mod + Ult               -> Realm öffnen (100 % Realm-Meter)
 //  Ult während gegn. Realm -> Schutzkreis (halten)
 //  Guard + Grab            -> Essenz-Burst (Notfall-Pushback, auch aus Hitstun)

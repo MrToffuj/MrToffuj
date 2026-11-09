@@ -7,7 +7,7 @@ namespace fc::detail {
 using Ev = EventSink*;
 
 void emit(Ev ev, const MatchState& m, ImpactKind k, int src, ImpactClass s, Vec3 pos, Vec3 dir, Fx force, int16_t tag = 0);
-const PactModifiers& mods(const MatchState& m, const MatchSetup& s, int i);
+const OathModifiers& mods(const MatchState& m, const MatchSetup& s, int i);
 const TechniqueLogic* logicOf(const MatchSetup& s, int i);
 bool overlap(Vec3 a, Fx ra, Vec3 b, Fx rb);
 Fx distXZ(Vec3 a, Vec3 b);
@@ -18,6 +18,7 @@ void triggerBurnout(MatchState& m, int i, Ev ev);
 void addRealmMeter(FighterState& f, int amount);
 bool hitsFighter(const MatchState& m, int target, Vec3 center, Fx radius);
 void moveToward(Vec3& p, Vec3 target, Fx speed);
+Vec3 teamBase(const MatchSetup& s, int team);
 bool isInvulnerable(const MatchState& m, const MatchSetup& s, int i);
 
 struct PendingHit {

@@ -14,10 +14,10 @@ enum BodyPassive : uint16_t {
     PassiveFlankCrit       = 1 << 3, // Speedster: Crit von Rücken/Seite
     PassiveFastRegen       = 1 << 4, // Caster
     PassiveQuickSkills     = 1 << 5, // Caster: kürzere Cooldowns
-    PassiveWideZeroSpark   = 1 << 6, // Brawler: größeres Nullfunke-Fenster
+    PassiveWideBlackSpark   = 1 << 6, // Brawler: größeres Nullfunke-Fenster
     PassiveCheapCounter    = 1 << 7, // Technician: größeres Parry-Fenster, billiger Schutzkreis
     PassiveAssist          = 1 << 8, // Summoner: Assist-Slot (noch nicht implementiert)
-    PassiveNullborn        = 1 << 9, // Sonder-Build ohne Technik
+    PassiveHeavensBind        = 1 << 9, // Sonder-Build ohne Technik
 };
 
 struct BodyDef {
@@ -38,13 +38,13 @@ struct BodyStats {
     Fx reach;                 // Multiplikator für Basis-Hitbox-Reichweite
     int32_t ceMax = 0;        // in 1/100 Essenz
     int32_t ceRegen = 0;      // pro Frame, in 1/100 Essenz
-    int16_t zeroSparkWindow = 1; // +- Frames
+    int16_t blackSparkWindow = 1; // +- Frames
     int16_t parryWindow = 5;
-    int32_t wardDrain = 0;    // Schutzkreis-Kosten pro Frame (1/100)
+    int32_t simpleRealmDrain = 0;    // Schutzkreis-Kosten pro Frame (1/100)
     int16_t cooldownPct = 100;
     int16_t damagePct = 100;
     int16_t realmGainPct = 100;
-    bool sureHitImmune = false;
+    bool guaranteedHitImmune = false;
 };
 
 BodyStats deriveStats(const BodyDef& b);
@@ -56,7 +56,7 @@ const BodyDef& caster();
 const BodyDef& brawler();
 const BodyDef& technician();
 const BodyDef& summoner();
-const BodyDef& nullborn(); // Sonder-Build: Speedster ohne Technik
+const BodyDef& heavensBind(); // Sonder-Build: Speedster ohne Technik
 } // namespace bodies
 
 } // namespace fc

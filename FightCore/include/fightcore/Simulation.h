@@ -2,34 +2,52 @@
 #include "fightcore/Body.h"
 #include "fightcore/Companion.h"
 #include "fightcore/Events.h"
-#include "fightcore/Pact.h"
+#include "fightcore/Oath.h"
 #include "fightcore/State.h"
 #include "fightcore/Technique.h"
 #include "fightcore/Types.h"
 
 namespace fc {
 
-// Spielmodi
-//  Duel  : 1v1, Elimination
-//  Teams : 2v2, Elimination, kein Friendly Fire
-//  Brawl : bis zu 20 Spieler, Free-for-all auf großer Map, Respawn, Zeitlimit, meiste K.O.s gewinnen
-enum class GameMode : uint8_t { Duel, Teams, Brawl };
+enum class GameMode : uint8_t {
+    Duel,   // 1v1, elimination
+    Teams,  // 2v2, elimination
+    Brawl,  // open colony, up to 20, endless respawns, no score
+    Custom, // up to 20, custom teams and objective
+};
+
+enum class Objective : uint8_t {
+    None,           // free fight, never ends
+    Elimination,    // last team standing, no respawns
+    Deathmatch,     // team scores per KO
+    CaptureTheFlag,
+    Oddball,        // hold the ball to score
+    Checkpoints,    // capture and hold zones
+};
 
 struct ModeRules {
-    int8_t fighters = 2;          // Lobby-Größe (wird mit Bots aufgefüllt)
-    bool teams = false;           // false: jeder Kämpfer ist sein eigenes Team
-    int16_t respawnFrames = -1;   // -1 = kein Respawn (Elimination)
-    int32_t timeLimitFrames = -1; // -1 = kein Zeitlimit
-    int16_t koLimit = 0;          // 0 = keins
-    Fx arenaHalfExtent = Fx::fromInt(12);
+    int8_t fighters = 2;
+    uint8_t teamCount = 0;        // 0 = everyone for themselves
+    bool friendlyFire = false;
+    int16_t respawnFrames = -1;   // -1 = no respawn
+    int32_t timeLimitFrames = -1; // -1 = no time limit
+    int16_t scoreLimit = 0;       // 0 = none
+    Objective objective = Objective::Elimination;
+    const MapDef* map = nullptr;
 };
 ModeRules rulesFor(GameMode mode);
+
+namespace maps {
+const MapDef& shrineWard();     // small colony, 1v1
+const MapDef& harborDistrict(); // medium colony, 2v2
+const MapDef& oldCapital();     // large colony, Brawl / Custom
+} // namespace maps
 
 // Ein Build = Body + Technik (+ optionaler Pakt). Technik = nullptr nur beim Nullgeborenen.
 struct Loadout {
     const BodyDef* body = nullptr;
     const TechniqueDef* technique = nullptr;
-    PactChoice pact;
+    OathChoice oath;
     PlaystyleProfile profile;
     const CompanionDef* assist = nullptr; // Summoner-Assist (nullptr -> Klingenwolf)
     uint8_t team = 0;                     // nur im Teams-Modus relevant
@@ -39,25 +57,30 @@ struct Loadout {
 
 struct MatchSetup {
     GameMode mode = GameMode::Duel;
+    ModeRules rules;
     int8_t count = 2;
     Loadout loadout[kMaxFighters];
-    StageDef stage;
 
     // Von finalize() berechnet:
     BodyStats stats[kMaxFighters];
-    PactResult pact[kMaxFighters];
+    OathResult oath[kMaxFighters];
     // Begleiter-Roster: [Summoner-Assist][Technik-Begleiter...][Pakt-Begleiter]
     const CompanionDef* roster[kMaxFighters][kRosterMax] = {};
     int8_t rosterCount[kMaxFighters] = {};
     int8_t assistRoster[kMaxFighters] = {};
     int8_t techRosterStart[kMaxFighters] = {};
-    int8_t pactRoster[kMaxFighters] = {};
+    int8_t oathRoster[kMaxFighters] = {};
     void finalize();
 };
 
-// Lobby: Menschen übernehmen die ersten Slots, der Rest wird mit Bots aufgefüllt (deterministisch per Seed).
-// Teams-Modus: Menschen behalten ihr Team, Bots füllen das kleinere Team auf.
+// Humans take the first slots, bots fill the rest (picked from the seed so every peer builds the same lobby).
+// With teams, humans keep their team and bots join whichever team is smallest.
 MatchSetup buildMatch(GameMode mode, const Loadout* humans, int humanCount, uint8_t botLevel, uint32_t seed);
+MatchSetup buildMatch(GameMode mode, const ModeRules& rules, const Loadout* humans, int humanCount, uint8_t botLevel,
+                      uint32_t seed);
+
+const MapDef& mapOf(const MatchSetup& s);
+bool carriesObjective(const MatchState& m, int fighter); // flag or ball carriers can't use their technique
 
 constexpr int kBufferWindow = 8;
 constexpr int16_t kRealmCastFrames = 60;  // für alle gleich
@@ -78,6 +101,7 @@ MatchState createMatch(const MatchSetup& setup);
 
 int bondLevel(const FighterState& f); // 1..3
 bool isEnemy(const MatchState& m, int a, int b);
+bool canHurt(const MatchState& m, const MatchSetup& s, int attacker, int victim);
 const CompanionDef& companionDef(const MatchSetup& s, int owner, const CompanionState& c);
 // inputs: ein Eintrag pro Kämpfer (setup.count). Bot-Slots werden ignoriert, Bots denken in der Simulation.
 void step(MatchState& m, const MatchSetup& setup, const FrameInput inputs[], EventSink* events = nullptr);

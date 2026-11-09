@@ -52,13 +52,13 @@ UFightGameSettings::UFightGameSettings()
 
 	Loadouts.SetNum(4);
 	Loadouts[0].Body = EFightBody::Summoner;
-	Loadouts[0].Technique = EFightTechnique::Glutkern;
+	Loadouts[0].Technique = EFightTechnique::CalamityFlames;
 	Loadouts[1].Body = EFightBody::Caster;
-	Loadouts[1].Technique = EFightTechnique::Nullraum;
+	Loadouts[1].Technique = EFightTechnique::Boundless;
 	Loadouts[1].Team = 1;
 	Loadouts[2].Body = EFightBody::Heavy;
-	Loadouts[2].Technique = EFightTechnique::Schattenmenagerie;
+	Loadouts[2].Technique = EFightTechnique::ShadowPuppets;
 	Loadouts[3].Body = EFightBody::Speedster;
-	Loadouts[3].Technique = EFightTechnique::Nullraum;
+	Loadouts[3].Technique = EFightTechnique::Boundless;
 	Loadouts[3].Team = 1;
 }

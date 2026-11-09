@@ -37,7 +37,7 @@ struct FFightLoadout
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = "Loadout") EFightBody Body = EFightBody::Brawler;
-	UPROPERTY(EditAnywhere, Category = "Loadout") EFightTechnique Technique = EFightTechnique::Glutkern;
+	UPROPERTY(EditAnywhere, Category = "Loadout") EFightTechnique Technique = EFightTechnique::CalamityFlames;
 	// Nur für Summoner
 	UPROPERTY(EditAnywhere, Category = "Loadout") EFightAssist Assist = EFightAssist::BladeWolf;
 	// Nur 2v2: Team 0 oder 1

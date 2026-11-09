@@ -10,13 +10,14 @@
 namespace fc {
 
 enum class ImpactKind : uint8_t {
-    Hit, Block, Parry, Nullified, ZeroSpark, SureHit,
+    Hit, Block, Parry, Nullified, BlackSpark, GuaranteedHit,
     GroundSlam, Landing, DashDust, WallSplat, WallBreak,
     ProjectileBurst, TechniqueFx, Burst,
     RealmOpen, RealmClash, RealmEnd,
     Ignite, Burnout,
     CompanionSummon, CompanionCall, CompanionDown, CompanionRevive, CompanionGone,
     KO, Respawn,
+    BarrierHit, FlagTaken, FlagDropped, FlagReturned, FlagCaptured, BallTaken, BallDropped, ZoneCaptured,
 };
 
 struct ImpactEvent {

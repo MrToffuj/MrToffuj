@@ -1,7 +1,7 @@
 #pragma once
 // Technik-Template (GDD Abschnitt 4): JEDE Technik hat exakt
 //   1 Core Rule, 3 Skills (Offense / Utility / Defense-Movement),
-//   1 Apex-Technik (Burst / Zone / Transform), 1 Realm (Damage / Lock / Debuff / BuffField), 1 Schwäche.
+//   1 MaxOutput-Technik (Burst / Zone / Transform), 1 Realm (Damage / Lock / Debuff / BuffField), 1 Schwäche.
 // Logik ist STATELESS (const). Zustand -> FighterState::tech[].
 #include <array>
 #include <cstdint>
@@ -18,7 +18,7 @@ struct MatchSetup;
 struct FighterState;
 struct BodyStats;
 
-enum class ApexType : uint8_t { Burst, Zone, Transform };
+enum class MaxOutputType : uint8_t { Burst, Zone, Transform };
 enum class RealmClass : uint8_t { Damage, Lock, Debuff, BuffField };
 enum class SkillRole : uint8_t { Offense = 0, Utility = 1, Defense = 2 };
 
@@ -34,10 +34,10 @@ struct TechniqueDef {
     const char* name = "";
     const char* coreRule = "";
     const char* weakness = "";
-    std::vector<MoveDef> moves;      // Skills, Apex, Projektil-Props usw.
+    std::vector<MoveDef> moves;      // Skills, MaxOutput, Projektil-Props usw.
     std::array<SkillSlot, 3> skills; // Index = SkillRole
-    int16_t apexMove = -1;
-    ApexType apexType = ApexType::Burst;
+    int16_t maxOutputMove = -1;
+    MaxOutputType maxOutputType = MaxOutputType::Burst;
     RealmClass realmClass = RealmClass::Damage;
     std::vector<const CompanionDef*> companions; // Begleiter-Pool der Technik (z. B. Schattenpool)
     const TechniqueLogic* logic = nullptr;

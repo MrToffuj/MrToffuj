@@ -22,7 +22,7 @@ namespace
 		case EFightBody::Caster: return &fc::bodies::caster();
 		case EFightBody::Technician: return &fc::bodies::technician();
 		case EFightBody::Summoner: return &fc::bodies::summoner();
-		case EFightBody::Nullborn: return &fc::bodies::nullborn();
+		case EFightBody::HeavensBind: return &fc::bodies::heavensBind();
 		default: return &fc::bodies::brawler();
 		}
 	}
@@ -31,9 +31,9 @@ namespace
 	{
 		switch (T)
 		{
-		case EFightTechnique::Nullraum: return &fc::techniques::nullraum();
-		case EFightTechnique::Glutkern: return &fc::techniques::glutkern();
-		case EFightTechnique::Schattenmenagerie: return &fc::techniques::schattenmenagerie();
+		case EFightTechnique::Boundless: return &fc::techniques::boundless();
+		case EFightTechnique::CalamityFlames: return &fc::techniques::calamityFlames();
+		case EFightTechnique::ShadowPuppets: return &fc::techniques::shadowPuppets();
 		default: return nullptr;
 		}
 	}
@@ -52,7 +52,7 @@ namespace
 	void FillLoadout(fc::Loadout& Out, const FFightLoadout& In)
 	{
 		Out.body = BodyOf(In.Body);
-		Out.technique = In.Body == EFightBody::Nullborn ? nullptr : TechniqueOf(In.Technique);
+		Out.technique = In.Body == EFightBody::HeavensBind ? nullptr : TechniqueOf(In.Technique);
 		Out.assist = AssistOf(In.Assist);
 		Out.team = static_cast<uint8_t>(FMath::Clamp(In.Team, 0, 1));
 	}
@@ -286,7 +286,7 @@ void AFightDirector::HandleEvent(const fc::ImpactEvent& E)
 	case K::Hit: case K::GroundSlam: case K::WallSplat: case K::Block:
 		Shake = 2.f + 3.f * Impact.Strength;
 		break;
-	case K::WallBreak: case K::ZeroSpark: case K::RealmOpen: case K::RealmClash:
+	case K::WallBreak: case K::BlackSpark: case K::RealmOpen: case K::RealmClash:
 		Shake = 14.f;
 		ImpactFlash = 1.f; // Impact-Frame (später: invertiertes Tusche-Bild)
 		break;
@@ -336,7 +336,7 @@ void AFightDirector::Present(float Alpha, float DeltaSeconds)
 		case fc::FState::Guard: case fc::FState::Blockstun: Color = Color * 0.5f + FLinearColor(0.f, 0.5f, 0.5f); break;
 		case fc::FState::Locked: Color = FLinearColor(0.5f, 0.1f, 0.7f); break;
 		case fc::FState::Heal: Color = FLinearColor(0.3f, 0.9f, 0.4f); break;
-		case fc::FState::Ward: Color = FLinearColor(0.9f, 0.9f, 0.6f); break;
+		case fc::FState::SimpleRealm: Color = FLinearColor(0.9f, 0.9f, 0.6f); break;
 		case fc::FState::Attack:
 			if (fc::moveOf(Setup, i, Cur.moveId).isActiveFrame(Cur.moveFrame)) Color = FLinearColor(1.f, 0.9f, 0.1f);
 			break;

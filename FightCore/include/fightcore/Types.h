@@ -7,7 +7,7 @@
 
 namespace fc {
 
-enum class MoveCategory : uint8_t { Normal = 0, Grab = 1, Skill = 2, Apex = 3, Realm = 4, Burst = 5 };
+enum class MoveCategory : uint8_t { Normal = 0, Grab = 1, Skill = 2, MaxOutput = 3, Realm = 4, Burst = 5 };
 constexpr uint8_t catBit(MoveCategory c) { return static_cast<uint8_t>(1u << static_cast<uint8_t>(c)); }
 
 enum class ImpactClass : uint8_t { Light, Medium, Heavy, Crushing };
@@ -50,10 +50,21 @@ struct MoveDef {
     bool isActiveFrame(int16_t f) const { return f >= startup && f < startup + active; }
 };
 
-struct StageDef {
-    Fx halfExtent = Fx::fromInt(12);
-    int16_t wallHp = 300;
-    Fx wallImpactSpeed = Fx::ratio(1, 5);
+// A colony: a circular area sealed off by the barrier. The barrier itself is indestructible,
+// everything inside it (buildings, pillars) can be wrecked.
+struct ObstacleDef {
+    Vec3 center;
+    Fx halfX, halfZ;
+    Fx height;
+    int16_t hp = 250;
+};
+
+struct MapDef {
+    const char* name = "";
+    Fx radius = Fx::fromInt(14);
+    std::vector<ObstacleDef> obstacles;
+    std::vector<Vec3> zones; // capture points for the Checkpoints objective
+    Fx impactSpeed = Fx::ratio(1, 5); // min. speed for a body to damage scenery
 };
 
 } // namespace fc

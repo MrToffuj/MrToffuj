@@ -24,6 +24,61 @@ constexpr Level kLevels[3] = {
     {75, 5, 75, 10},
 };
 
+// Numpad direction that walks toward a point, given that movement is relative to the facing.
+uint8_t dirToward(const FighterState& f, Vec3 point) {
+    const Vec3 d{point.x - f.pos.x, Fx{}, point.z - f.pos.z};
+    const Fx len = fc::length(d);
+    if (len < Fx::ratio(1, 2)) return 5;
+    const Vec3 right{f.facing.z, Fx{}, -f.facing.x};
+    const Fx fwd = dot(d, f.facing), side = dot(d, right), cut = len * Fx::ratio(38, 100);
+    const int v = fwd > cut ? 1 : (fwd < -cut ? -1 : 0);
+    const int h = side > cut ? 1 : (side < -cut ? -1 : 0);
+    static const uint8_t numpad[3][3] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+    return numpad[v + 1][h + 1];
+}
+
+// Where the objective wants this bot to be. False = just fight.
+bool objectiveGoal(const MatchState& m, const MatchSetup& s, int i, Vec3& goal) {
+    const FighterState& f = m.f[i];
+    const ObjectiveState& o = m.objective;
+    switch (s.rules.objective) {
+        case Objective::CaptureTheFlag: {
+            const int flags = s.rules.teamCount < kMaxFlags ? s.rules.teamCount : kMaxFlags;
+            for (int t = 0; t < flags; ++t)
+                if (o.flags[t].carrier == i) { goal = detail::teamBase(s, f.team); return true; }
+            if (f.team < flags && o.flags[f.team].carrier >= 0) { goal = m.f[o.flags[f.team].carrier].pos; return true; }
+            for (int k = 0; k < flags; ++k) {
+                const int t = (k + i) % flags; // spread the bots over the enemy flags
+                if (t == f.team) continue;
+                const int carrier = o.flags[t].carrier;
+                if (carrier >= 0 && m.f[carrier].team == f.team) continue;
+                goal = o.flags[t].pos;
+                return true;
+            }
+            return false;
+        }
+        case Objective::Oddball:
+            if (o.ballCarrier == i) return false;
+            goal = o.ballCarrier >= 0 ? m.f[o.ballCarrier].pos : o.ballPos;
+            return true;
+        case Objective::Checkpoints: {
+            const MapDef& map = mapOf(s);
+            int best = -1;
+            Fx bestDist{};
+            for (int z = 0; z < static_cast<int>(map.zones.size()) && z < kMaxZones; ++z) {
+                if (o.zones[z].owner == f.team) continue;
+                const Fx d = detail::distXZ(f.pos, map.zones[z]);
+                if (best < 0 || d < bestDist) { best = z; bestDist = d; }
+            }
+            if (best < 0) return false;
+            goal = map.zones[best];
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
 } // namespace
 
 FrameInput botInput(const MatchState& m, const MatchSetup& s, int i) {
@@ -40,7 +95,7 @@ FrameInput botInput(const MatchState& m, const MatchSetup& s, int i) {
     auto roll = [&](uint32_t salt) { return static_cast<int>(hash32(seed + salt) % 100); };
     const uint16_t prev = f.input.current().buttons;
     auto press = [&](uint16_t b) { if (!(prev & b)) in.buttons = static_cast<uint16_t>(in.buttons | b); };
-    const Fx dist = distXZ(f.pos, t.pos);
+    const Fx dist = detail::distXZ(f.pos, t.pos);
     const int32_t ceMax = s.stats[i].ceMax;
 
     // In einem gegnerischen Realm: Schutzkreis halten
@@ -75,8 +130,16 @@ FrameInput botInput(const MatchState& m, const MatchSetup& s, int i) {
         press(BtnUlt);
         return in;
     }
-    if (L.technique && !f.apexUsed && ceMax > 0 && f.ce >= ceMax / 2 && dist < Fx::fromInt(6) && roll(4) < 6) {
+    if (L.technique && !f.maxOutputUsed && ceMax > 0 && f.ce >= ceMax / 2 && dist < Fx::fromInt(6) && roll(4) < 6) {
         press(BtnUlt);
+        return in;
+    }
+
+    // Objective first, unless someone is right in our face
+    Vec3 goal{};
+    if (dist > Fx::ratio(35, 10) && objectiveGoal(m, s, i, goal)) {
+        in.dir = dirToward(f, goal);
+        if (detail::distXZ(f.pos, goal) > Fx::fromInt(8) && roll(13) < 20) press(BtnDash);
         return in;
     }
 

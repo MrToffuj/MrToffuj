@@ -10,9 +10,9 @@ const CompanionDef& companionDef(const MatchSetup& s, int owner, const Companion
 namespace detail {
 namespace {
 
-const PactModifiers kNoPact{};
-const PactModifiers& setupMods(const MatchSetup& s, int i) {
-    return s.pact[i].tier == PactTier::None ? kNoPact : s.pact[i].mods;
+const OathModifiers kNoOath{};
+const OathModifiers& setupMods(const MatchSetup& s, int i) {
+    return s.oath[i].tier == OathTier::None ? kNoOath : s.oath[i].mods;
 }
 
 int16_t companionMaxHp(const MatchSetup& s, int owner, const CompanionDef& d) {
@@ -98,7 +98,7 @@ const MoveDef& companionMove(const MatchSetup& s, int owner, int roster, int16_t
 void buildRoster(MatchSetup& s) {
     for (int i = 0; i < s.count; ++i) {
         int n = 0;
-        s.assistRoster[i] = s.techRosterStart[i] = s.pactRoster[i] = -1;
+        s.assistRoster[i] = s.techRosterStart[i] = s.oathRoster[i] = -1;
         if (s.loadout[i].body->has(PassiveAssist)) {
             s.roster[i][n] = s.loadout[i].assist ? s.loadout[i].assist : &companions::bladeWolf();
             s.assistRoster[i] = static_cast<int8_t>(n++);
@@ -111,8 +111,8 @@ void buildRoster(MatchSetup& s) {
         }
         const uint8_t bonus = setupMods(s, i).bonusCompanion;
         if (bonus) {
-            s.roster[i][n] = bonus == 2 ? &companions::shifter() : &companions::pactSpirit();
-            s.pactRoster[i] = static_cast<int8_t>(n++);
+            s.roster[i][n] = bonus == 2 ? &companions::adaptor() : &companions::oathSpirit();
+            s.oathRoster[i] = static_cast<int8_t>(n++);
         }
         s.rosterCount[i] = static_cast<int8_t>(n);
     }
@@ -121,7 +121,7 @@ void buildRoster(MatchSetup& s) {
 void initCompanions(MatchState& m, const MatchSetup& s, int i) {
     {
         FighterState& f = m.f[i];
-        const PactModifiers& pm = setupMods(s, i);
+        const OathModifiers& pm = setupMods(s, i);
         const bool techComps = s.techRosterStart[i] >= 0;
         int slot = 0;
         if (s.assistRoster[i] >= 0 && !(pm.lockedCompanionSlots > 0 && !techComps)) {
@@ -129,8 +129,8 @@ void initCompanions(MatchState& m, const MatchSetup& s, int i) {
             if (pm.companionLost && !techComps) f.lostMask |= static_cast<uint8_t>(1u << s.assistRoster[i]); // kein Revive
         }
         if (pm.companionLost && techComps) f.lostMask |= static_cast<uint8_t>(1u << s.techRosterStart[i]);
-        if (s.pactRoster[i] >= 0) {
-            place(m, s, i, slot, s.pactRoster[i], homePos(f, slot));
+        if (s.oathRoster[i] >= 0) {
+            place(m, s, i, slot, s.oathRoster[i], homePos(f, slot));
             f.comp[slot].expires = pm.durationFrames > 0 ? pm.durationFrames : 1800;
         }
     }
@@ -252,7 +252,7 @@ void companionAttacks(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
         Fx radius = a.kind == AssistKind::Rise ? Fx::fromInt(1) : a.kind == AssistKind::Pull ? Fx::ratio(7, 10) : Fx::ratio(6, 10);
         int target = -1;
         for (int j = 0; j < m.count && target < 0; ++j)
-            if (isEnemy(m, owner, j) && !isInvulnerable(m, s, j) && hitsFighter(m, j, center, radius)) target = j;
+            if (canHurt(m, s, owner, j) && !isInvulnerable(m, s, j) && hitsFighter(m, j, center, radius)) target = j;
         if (target < 0) continue;
         c.hasHit = true;
         PendingHit h{true, &d.moves[a.move], -1, false, center, c.facing};
@@ -354,7 +354,7 @@ void realmHitsCompanions(MatchState& m, const MatchSetup& s, int owner, RealmCla
             CompanionState& c = m.f[target].comp[slot];
             if (!c.onField() || !inRealmArea(m, owner, c.pos)) continue;
             if (damageTick) {
-                emit(ev, m, ImpactKind::SureHit, owner, ImpactClass::Medium, c.pos, {}, Fx{}, 4);
+                emit(ev, m, ImpactKind::GuaranteedHit, owner, ImpactClass::Medium, c.pos, {}, Fx{}, 4);
                 damageCompanion(m, s, target, slot, bond3 ? 25 : 20, MoveCategory::Realm, ev);
             } else {
                 abortAction(c, companionDef(s, target, c));
