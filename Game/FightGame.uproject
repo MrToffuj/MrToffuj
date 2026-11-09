@@ -23,6 +23,10 @@
 		{
 			"Name": "PlayStationPads",
 			"Enabled": true
+		},
+		{
+			"Name": "AnimeLook",
+			"Enabled": true
 		}
 	]
 }

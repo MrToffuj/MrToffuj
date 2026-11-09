@@ -142,3 +142,32 @@ Figuren, Einstellungen oder Designs aus dem Anime: eigene Charakterdesigns, eige
 - [Game Watch (JP) zum Talk](https://game.watch.impress.co.jp/docs/news/20150307_691725.html)
 - UE-Toon-Ansätze: [Epic-Forum „Toon shading model“](https://forums.unrealengine.com/t/toon-shading-model/30226?page=18), [Custom Shading Model für UE5 (Forum)](https://forums.unrealengine.com/t/ue5-anime-toon-cel-shading-model-works-with-launcher-engine-versions/544226?page=2), [Unreal Engine Cel Shading (GitHub)](https://github.com/Treixatek/Unreal-Engine-Cel-Shading), [Stylized Rendering in UE5 (Strayspark)](https://www.strayspark.studio/blog/stylized-rendering-ue5-non-photorealistic), [Substrate Toon Shader UE 5.8 (Strayspark, unbestätigt)](https://www.strayspark.studio/blog/substrate-toon-shader-ue5-8-tutorial)
 - SDF-Gesichtsschatten: [URP Simple Genshin Shaders](https://github.com/NoiRC256/URPSimpleGenshinShaders), [Anime Shading Plus: Face Shadow Map Workflow](https://erichu33.github.io/ASPDocs/en/articles/face-shadow-map-creation-and-baking-workflow.html), [Unreal Genshin Character Shader](https://www.github.com/xcupsilon/unreal-genshin-character-shader)
+
+## In Unreal (umgesetzt, erste Stufe)
+
+Plugin `Game/Plugins/AnimeLook` ist ein einziger Vollbild-Shader direkt vor Unreals Post-Processing.
+Es ist reiner Code, kein Asset, und läuft deshalb auch im fertigen Spiel.
+
+**Was es macht:**
+- **Toon-Shading aus dem G-Buffer:** Unreals Beleuchtung wird für beleuchtete Pixel ignoriert und neu gerechnet,
+  als Albedo × eine von zwei Tonstufen.
+  - Die Kante ist hart, bei N·L = `r.AnimeLook.ShadowEdge`.
+  - Schatten werden lila statt grau.
+  - Das Licht sitzt immer oben hinter der Kamera. Was man ansieht, ist also beleuchtet wie ein Key-Frame
+    (Weg C, nur global statt pro Charakter).
+- **Rim:** schmale feste Kante auf der von der Kamera abgewandten Seite.
+- **Tuschelinien:** wo die Tiefe springt (relativ zur Entfernung) oder die Normalen knicken.
+  Die Dicke kommt aus `r.AnimeLook.LineWidth` und skaliert mit der Auflösung.
+- **Himmel:** gemalter Farbverlauf.
+- **Impact-Frame:** `r.AnimeLook.Impact` wird vom Director bei Black Spark, Wall Break, Realm und
+  Crushing-Treffern gesetzt. Für ein paar Frames wird das Bild dann invertiertes Schwarz-Weiß.
+- **Splitscreen:** funktioniert, jede Ansicht wird einzeln behandelt.
+
+**Ausschalten:** `r.AnimeLook 0` in der Konsole oder das Plugin in der `.uproject` deaktivieren. Das Spiel
+hängt nicht davon ab.
+
+**Grenzen:**
+- Nur Desktop-Renderer (Deferred, SM5). Für die Switch 2 bzw. den Mobile-Renderer braucht es die
+  Material-Variante (Weg C).
+- Echte Charakter-Modelle, Inverted-Hull-Outlines, SDF-Gesichter und Stepped Animation kommen mit den
+  ersten Modellen.

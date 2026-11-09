@@ -1,0 +1,105 @@
+// Anime look, one full-screen pass. See AnimeLook.cpp for the why.
+
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/DeferredShadingCommon.ush"
+
+float3 ShadowTint;
+float3 InkColor;
+float3 SkyTop;
+float3 SkyBottom;
+float LineWidth;
+float ShadowEdge;
+float Impact;
+
+static const float SkyDepth = 500000.0; // 5 km, nothing in a colony is that far away
+
+float Luma(float3 C)
+{
+	return dot(C, float3(0.299, 0.587, 0.114));
+}
+
+// Ink where the silhouette breaks (depth jumps) or a crease shows (normals turn).
+float InkAt(float2 UV, float Depth, float3 Normal, float2 Step)
+{
+	const float2 Offsets[4] = { float2(Step.x, 0), float2(-Step.x, 0), float2(0, Step.y), float2(0, -Step.y) };
+	float DepthSum = 0;
+	float NormalTurn = 0;
+	UNROLL
+	for (int i = 0; i < 4; ++i)
+	{
+		const float2 Tap = UV + Offsets[i];
+		DepthSum += min(CalcSceneDepth(Tap), SkyDepth);
+		const FGBufferData Other = GetGBufferData(Tap);
+		NormalTurn = max(NormalTurn, 1.0 - dot(Normal, Other.WorldNormal));
+	}
+	// Laplacian relative to distance, so far objects don't drown in lines and floors seen at
+	// a flat angle don't light up
+	const float DepthEdge = abs(DepthSum - 4.0 * min(Depth, SkyDepth)) / max(Depth, 1.0);
+	const float FromDepth = saturate((DepthEdge - 0.06) * 25.0);
+	const float FromNormal = saturate((NormalTurn - 0.35) * 6.0);
+	return max(FromDepth, FromNormal);
+}
+
+void MainPS(float4 SvPosition : SV_POSITION, out float4 OutColor : SV_Target0)
+{
+	const float2 Pixel = SvPosition.xy;
+	const float2 UV = Pixel * View.BufferSizeAndInvSize.zw;
+	const float3 Original = CalcSceneColor(UV);
+
+	// splitscreen: other views live in the same texture, leave them alone
+	const float2 RectMin = View.ViewRectMin.xy;
+	const float2 RectSize = View.ViewSizeAndInvSize.xy;
+	if (any(Pixel < RectMin) || any(Pixel >= RectMin + RectSize))
+	{
+		OutColor = float4(Original, 1);
+		return;
+	}
+
+	const float2 ViewUV = (Pixel - RectMin) * View.ViewSizeAndInvSize.zw;
+	const FGBufferData G = GetGBufferData(UV);
+	const float Depth = CalcSceneDepth(UV);
+	float3 Color;
+
+	if (Depth >= SkyDepth)
+	{
+		// painted sky: a plain gradient, no clouds, no sun disc
+		Color = lerp(SkyTop, SkyBottom, saturate(ViewUV.y * 1.4));
+	}
+	else if (G.ShadingModelID == SHADINGMODELID_UNLIT)
+	{
+		Color = Original / View.PreExposure; // unlit things (the barrier, effects) keep their look
+	}
+	else
+	{
+		// Our own light: up and behind the camera, a little to the left. It moves with the
+		// camera, so whatever we look at is lit like a key frame.
+		const float3 ToLight = normalize(-View.ViewForward * 0.55 + View.ViewUp * 0.75 - View.ViewRight * 0.35);
+		const float NdotL = dot(G.WorldNormal, ToLight);
+		// one hard terminator, a hair of softness so it doesn't shimmer
+		const float Lit = smoothstep(ShadowEdge - 0.015, ShadowEdge + 0.015, NdotL);
+		const float3 Albedo = G.BaseColor;
+		Color = Albedo * lerp(ShadowTint, float3(1, 1, 1), Lit);
+
+		// thin rim on the side turned away from the camera, drawn not computed
+		const float Facing = dot(G.WorldNormal, -View.ViewForward);
+		Color += Albedo * 0.25 * step(Facing, 0.22) * Lit;
+	}
+
+	// ink lines, a little thicker at higher resolutions so they read the same everywhere
+	if (LineWidth > 0 && Depth < SkyDepth)
+	{
+		const float Scale = RectSize.y / 1080.0;
+		const float2 Step = LineWidth * max(Scale, 0.5) * View.BufferSizeAndInvSize.zw;
+		Color = lerp(Color, InkColor, InkAt(UV, Depth, G.WorldNormal, Step));
+	}
+
+	// impact frame: everything to stark black and white, inverted, for a few frames
+	if (Impact > 0)
+	{
+		const float Ink = 1.0 - step(0.35, Luma(Color));
+		Color = lerp(Color, float3(Ink, Ink, Ink), saturate(Impact * 2.0));
+	}
+
+	// the tonemapper comes next and expects pre-exposed scene color
+	OutColor = float4(Color * View.PreExposure, 1);
+}

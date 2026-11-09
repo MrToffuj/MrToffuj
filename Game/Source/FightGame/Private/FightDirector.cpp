@@ -12,6 +12,7 @@
 #include "FightProfile.h"
 #include "FightShapeVisual.h"
 #include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "fightcore/Registry.h"
@@ -628,6 +629,9 @@ void AFightDirector::Present(float Alpha, float DeltaSeconds)
 	PresentObjective();
 
 	ImpactFlash = FMath::Max(0.f, ImpactFlash - DeltaSeconds * 8.f);
+	// the AnimeLook plugin turns this into the inverted ink frame; without it nothing happens
+	static IConsoleVariable* ImpactFrame = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AnimeLook.Impact"));
+	if (ImpactFrame) ImpactFrame->Set(ImpactFlash, ECVF_SetByCode);
 	UpdateCameras(DeltaSeconds);
 
 #if !UE_BUILD_SHIPPING

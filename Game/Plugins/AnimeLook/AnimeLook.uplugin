@@ -1,0 +1,17 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Anime Look",
+	"Description": "Turns the 3D frame into a 2D anime frame: toon shading with our own light, ink lines, painted sky, impact frames.",
+	"Category": "Rendering",
+	"CanContainContent": false,
+	"EnabledByDefault": true,
+	"Modules": [
+		{
+			"Name": "AnimeLook",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit"
+		}
+	]
+}

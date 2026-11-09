@@ -4,6 +4,7 @@
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
 #include "EngineUtils.h"
+#include "HAL/IConsoleManager.h"
 #include "FightDirector.h"
 #include "FightGameSettings.h"
 #include "FightUserSettings.h"
@@ -248,6 +249,8 @@ void AFightHUD::DrawHUD()
 	}
 
 	// impact frame placeholder, the real one is an inverted ink frame
-	if (Director->GetImpactFlash() > 0.f)
+	// white flash only as a stand-in when the AnimeLook plugin (real impact frames) isn't running
+	static IConsoleVariable* AnimeLook = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AnimeLook"));
+	if (Director->GetImpactFlash() > 0.f && (!AnimeLook || AnimeLook->GetInt() == 0))
 		DrawRect(FLinearColor(1.f, 1.f, 1.f, Director->GetImpactFlash() * 0.55f), 0.f, 0.f, W, H);
 }
