@@ -11,22 +11,27 @@ dieselben Systeme. Der Spielstil entsteht nur aus der Kombi.
 1. **Gleiche Basis, eigener Stil.** Identische Inputs und Systeme, Unterschiede nur über Body und Technik.
 2. **Build statt Roster.** Body und Technik frei kombinierbar, Anti-Synergien sind Absicht.
 3. **Jede Stärke hat ein Gegenmittel.** Schere-Stein-Papier auf Body-Ebene, Schwäche-Pflicht pro Technik.
-4. **Entdecken statt Tutorial.** Pakte sind ein verstecktes Layer.
-5. **Timing schlägt Zahlen.** Nullfunke, Parry und Realm-Clash belohnen Reads und Execution.
+4. **Entdecken statt Tutorial.** Binding Oaths sind ein verstecktes Layer.
+5. **Timing schlägt Zahlen.** Black Spark, Parry und Realm-Clash belohnen Reads und Execution.
 
 ## Begriffe
 
-| Begriff | Bedeutung |
+Das Spiel läuft auf **Englisch**. Die Namen spielen bewusst auf das Vorbild an, sind aber eigene Begriffe.
+
+| Vorbild | Bei uns |
 |---|---|
-| **Essenz** | Kampfenergie (Skills, Apex, Burst, Verstärkung) |
-| **Technik** | Die angeborene Spezialfähigkeit eines Chars |
-| **Apex-Technik** | Maximum-Move der Technik (Burst / Zone / Transform) |
-| **Realm** | Ultimate-Zone mit Sure-Hit-Effekt |
-| **Schutzkreis** | Anti-Realm-Konter |
-| **Nullfunke** | Perfekt getimter Treffer (×2,5 Schaden) |
-| **Rückfluss** | Heilung mit Essenz |
-| **Pakt** | Verstecktes Opfer-/Belohnungssystem |
-| **Nullgeboren** | Sonder-Build ohne Technik |
+| Cursed Energy | **CE** |
+| Cursed Technique | **Technique (CT)** |
+| Maximum Technique | **Max Output** |
+| Domain Expansion | **Realm Expansion** |
+| Simple Domain | **Simple Realm** |
+| Black Flash | **Black Spark** |
+| RCT | **Reverse Flow** |
+| Binding Vow | **Binding Oath** |
+| Heavenly Restriction | **Heaven's Bind** |
+| Sure-Hit | **Guaranteed Hit** |
+| Shikigami | **Familiars** (im Code: Companions) |
+| Culling Game | **Carnage Game** (Kolonien = Maps, siehe [MAPS.md](MAPS.md)) |
 
 ## 2. Gemeinsame Basis ✅
 
@@ -39,11 +44,11 @@ dieselben Systeme. Der Spielstil entsteht nur aus der Kombi.
 | Guard (R1) | Blocken, frisch gedrückt kurz vor Treffer = **Parry** |
 | Guard + Dash | **Dodge** (Unverwundbarkeit) |
 | Mod (L1) + Light / Heavy / Grab | Skill 1 / 2 / 3 (Offense / Utility / Defense) |
-| Ult (L2) | Apex-Technik |
+| Ult (L2) | Max Output |
 | Mod + Ult | Realm öffnen |
-| Ult (während gegnerischem Realm, halten) | Schutzkreis |
-| Guard + Grab | **Essenz-Burst** – Notfall-Pushback, auch aus Hitstun |
-| Mod + Guard (halten) | Rückfluss |
+| Ult (während gegnerischem Realm, halten) | Simple Realm |
+| Guard + Grab | **CE-Burst** – Notfall-Pushback, auch aus Hitstun |
+| Mod + Guard (halten) | Reverse Flow |
 | Mod + Dash | Verstärkung an/aus |
 | Assist (R3) + Richtung | Begleiter rufen (siehe 9) |
 
@@ -53,48 +58,48 @@ Modifier zählen **im Frame des Drückens** (wichtig für den Input-Buffer).
 
 | Ressource | Funktion | Lädt über |
 |---|---|---|
-| HP | Lebensleiste | Rückfluss (max. 30 % pro Runde) |
-| Essenz | Skills, Apex, Burst, Verstärkung, Core Rules | Passive Regen, Body-abhängig |
-| Realm-Meter | Voraussetzung für Realm | Schaden, Nullfunke, Parry |
-| Burnout | Essenz leer → Technik 3 s gesperrt | automatisch |
+| HP | Lebensleiste | Reverse Flow (max. 30 % pro Runde) |
+| CE | Skills, Max Output, Burst, Verstärkung, Core Rules | Passive Regen, Body-abhängig |
+| Realm-Meter | Voraussetzung für Realm | Schaden, Black Spark, Parry |
+| Burnout | CE leer → Technik 3 s gesperrt | automatisch |
 
 ### Universal-Mechaniken
 
-- **Verstärkung:** +20 % Schaden, −20 % Schaden durch Essenz-Angriffe, kostet Essenz/Frame.
-- **Nullfunke:** Normal genau auf das Hitstop-Ende des vorherigen Treffers gedrückt
+- **Verstärkung:** +20 % Schaden, −20 % Schaden durch CE-Angriffe, kostet CE/Frame.
+- **Black Spark:** Normal genau auf das Hitstop-Ende des vorherigen Treffers gedrückt
   (±1 Frame, Brawler ±3). ×2,5 Schaden, +25 % Realm-Meter, extra Hitstop → Impact-Frame.
-- **Rückfluss:** Heilung, Char steht still und ist verwundbar.
-- **Schutzkreis:** blockt Sure-Hit, kostet Essenz pro Frame (Technician halb).
+- **Reverse Flow:** Heilung, Char steht still und ist verwundbar.
+- **Simple Realm:** blockt Guaranteed Hit, kostet CE pro Frame (Technician halb).
 - **Realm:** bei 100 % Meter, siehe 5.
 
 ## 3. Body Types ✅
 
-Jeder Body hat genau **10 Punkte** auf HP / Speed / Essenz / Range.
+Jeder Body hat genau **10 Punkte** auf HP / Speed / CE / Range.
 
-| Body | HP | Speed | Essenz | Range | Passiv |
+| Body | HP | Speed | CE | Range | Passiv |
 |---|---|---|---|---|---|
 | Heavy | 5 | 1 | 2 | 2 | Super Armor auf Heavies, Grabs ×1,5 |
 | Speedster | 1 | 5 | 2 | 2 | Dash-Cancel nach Treffer, Crit (×1,3) von Seite/Rücken |
 | Caster | 1 | 2 | 4 | 3 | Regen ×1,5, Cooldowns −25 % |
-| Brawler | 3 | 3 | 2 | 2 | Nullfunke-Fenster ±3 |
-| Technician | 2 | 3 | 3 | 2 | Parry-Fenster 8 statt 5, Schutzkreis halb so teuer |
+| Brawler | 3 | 3 | 2 | 2 | Black-Spark-Fenster ±3 |
+| Technician | 2 | 3 | 3 | 2 | Parry-Fenster 8 statt 5, Simple Realm halb so teuer |
 | Summoner | 2 | 2 | 3 | 3 | Assist-Slot: 1 permanenter Begleiter |
 
-**Nullgeboren (Sonder-Build):** Speedster ohne Technik und ohne Essenz. Dafür +20 % Speed,
-+15 % Schaden, immun gegen Sure-Hit, begrenzter Pakt-Wert.
+**Heaven's Bind (Sonder-Build):** Speedster ohne Technik und ohne CE. Dafür +20 % Speed,
++15 % Schaden, immun gegen Guaranteed Hit, begrenzter Binding Oath-Wert.
 
-**Anti-Synergien sind gewollt:** z. B. Nullraum auf Heavy = Feld-Tank mit Essenz-Hunger.
+**Anti-Synergien sind gewollt:** z. B. Boundless auf Heavy = Feld-Tank mit CE-Hunger.
 
-Abgeleitete Werte (`src/Body.cpp`): HP = 600 + 120 × HP, Essenz = 400 + 150 × Essenz,
-Reichweite ×(0,85 + 0,075 × Range), Realm-Gewinn 80 % + 10 % × Essenz.
+Abgeleitete Werte (`src/Body.cpp`): HP = 600 + 120 × HP, CE = 400 + 150 × CE,
+Reichweite ×(0,85 + 0,075 × Range), Realm-Gewinn 80 % + 10 % × CE.
 
 ## 4. Technik-Template ✅
 
 | Baustein | Anzahl | Regel |
 |---|---|---|
 | Core Rule | 1 | Passive Eigenheit, die alle Skills färbt |
-| Skills | 3 | Offense, Utility, Defense/Movement – kosten Essenz, haben Cooldown |
-| Apex-Technik | 1 | Burst / Zone / Transform, kostet 50 % Essenz, 1× pro Runde, bestrafbares Startup |
+| Skills | 3 | Offense, Utility, Defense/Movement – kosten CE, haben Cooldown |
+| Max Output | 1 | Burst / Zone / Transform, kostet 50 % CE, 1× pro Runde, bestrafbares Startup |
 | Realm | 1 | Klasse Damage / Lock / Debuff / BuffField |
 | Schwäche | 1 | Bewusst eingebaut, nie optional |
 
@@ -106,56 +111,56 @@ Cast-Zeit (60 F) und Dauer (600 F) für alle gleich, nur der Effekt unterscheide
 
 | Klasse | Effekt |
 |---|---|
-| Damage | Sure-Hit: 20 Schaden alle 0,5 s |
+| Damage | Guaranteed Hit: 20 Schaden alle 0,5 s |
 | Lock | Gegner alle 200 F für 90 F festgesetzt, kaum Schaden |
-| Debuff | Gegner: keine Essenz-Regen, Skills +50 % teurer, +15 % Schaden genommen |
+| Debuff | Gegner: keine CE-Regen, Skills +50 % teurer, +15 % Schaden genommen |
 | BuffField | Besitzer: Cooldowns 2× schneller, Skills −50 % Kosten, +15 % Schaden |
 
-- **Geschlossener Realm:** Besitzer bewegt sich mit halbem Tempo. **Offener Realm** (Pakt-Unlock):
+- **Geschlossener Realm:** Besitzer bewegt sich mit halbem Tempo. **Offener Realm** (Oath-Unlock):
   volle Bewegung, Wirkung nur im Radius 10.
-- **Konter:** Schutzkreis, Gegen-Realm → **Clash** (90 F Light hämmern, mehr Drücke gewinnt, bei
+- **Konter:** Simple Realm, Gegen-Realm → **Clash** (90 F Light hämmern, mehr Drücke gewinnt, bei
   Gleichstand hält der Verteidiger).
 
 ## 6. Technik-Katalog
 
-| Technik | Core Rule | Skills (Off / Util / Def) | Apex | Realm | Schwäche | Status |
+| Technik | Core Rule | Skills (Off / Util / Def) | Max Output | Realm | Schwäche | Status |
 |---|---|---|---|---|---|---|
-| **Nullraum** | Distanzfeld: Auto-Block gegen Projektile & Lights, kostet Essenz | Abstoßung / Anziehung / Faltschritt | Singularität (Burst) | Ereignishorizont (Lock) | Kein Essenz = kein Feld, Grabs gehen durch | ✅ |
-| **Glutkern** | Hitze-Stacks: Gegner brennt | Glutfalter / Magmasäule (Zone) / Hitzemantel | Sternfall (Burst) | Schmelzkammer (Damage) | Setup, langes Startup | ✅ |
-| **Schattenmenagerie** | Schattenpool: bis zu 2 Bestien als Begleiter | Schattenhunde / Nachtschwinge (Anti-Air) / Schlundkröte (Grab-Pull) | Flutkoloss (Zone) | Schattengarten (BuffField) | Gefallene Bestien weg für die Runde | ✅ |
-| Schnittkunst | Schnitt-Schaden skaliert mit HP-Verlust des Gegners | Fernschnitt / Nahschnitt / Schnittnetz | Flammenpfeil (Burst) | Schnittaltar (Damage) | Blockbar, wenig Defense | ⏳ |
-| Echo | Echo-Marke: geparrter Skill 20 s gespeichert | Geisterhieb / Geisterschild / Echo-Tausch | Geist entfesselt (Transform) | Spiegelsaal (BuffField) | Ohne Echo dünnes Kit | ⏳ |
-| Seelenformung | Seelenberührung baut Debuff auf | Seelenhand / Leibverformung / Seelenpanzer | Seelenspaltung (Transform) | Vollkommene Form (Debuff) | Braucht Kontakt | ⏳ |
-| Tauschhand | Klatschen tauscht Positionen (auch Objekte) | Tauschschlag / Köder-Tausch / Objekt-Tausch | Tauschwirbel (Zone) | Lock | Klatschen kostet Tempo, lesbar | ⏳ |
-| Blutbindung | Blut-Meter, Skills teils mit HP bezahlt | Blutlanze / Roter Strom / Verdichtung | Blutnova (Burst) | BuffField (gratis Blut) | Glass Cannon | ⏳ |
-| Taktgesetz | 24-Bilder-Regel: wer deine Frames bricht, friert ein | Bildsprung / Bildfessel / Bildfolge | Zeitraffer (Transform) | Debuff | Lesbar, Regelbruch friert dich selbst ein | ⏳ |
-| Befehlsstimme | Befehle kosten Essenz + Selbstschaden | „Halt!“ / „Zerbirst!“ / „Fort!“ | Massenbefehl (Burst) | Lock | Selbstschaden, wenig Defense | ⏳ |
+| **Boundless** | Infinite Gap: Auto-Block gegen Projektile & Lights, kostet CE | Repel / Attract / Fold Step | Singularity (Burst) | Endless Void (Lock) | Kein CE = kein Feld, Grabs gehen durch | ✅ |
+| **Calamity Flames** | Hitze-Stacks: Gegner brennt | Ember Moths / Magma Pillar (Zone) / Heat Mantle | Falling Star (Burst) | Iron Coffin (Damage) | Setup, langes Startup | ✅ |
+| **Shadow Puppets** | Shadow Pool: bis zu 2 Bestien als Begleiter | Shadow Hounds / Night Wing (Anti-Air) / Maw Toad (Grab-Pull) | Flood Colossus (Zone) | Shadow Garden (BuffField) | Gefallene Bestien weg für die Runde | ✅ |
+| Butcher's Cut | Schnitt-Schaden skaliert mit HP-Verlust des Gegners | Fernschnitt / Nahschnitt / Schnittnetz | Flame Arrow (Burst) | Cruel Shrine (Damage) | Blockbar, wenig Defense | ⏳ |
+| Pure Love | Copy Mark: geparrter Skill 20 s gespeichert | Spirit Strike / Spirit Guard / Mimic Swap | Bound Spirit Unleashed (Transform) | Hall of Mirrors (BuffField) | Ohne Kopie dünnes Kit | ⏳ |
+| Soul Sculpting | Seelenberührung baut Debuff auf | Seelenhand / Leibverformung / Seelenpanzer | Seelenspaltung (Transform) | Perfect Form (Debuff) | Braucht Kontakt | ⏳ |
+| Clap Swap | Klatschen tauscht Positionen (auch Objekte) | Tauschschlag / Köder-Tausch / Objekt-Tausch | Tauschwirbel (Zone) | Lock | Klatschen kostet Tempo, lesbar | ⏳ |
+| Blood Craft | Blut-Meter, Skills teils mit HP bezahlt | Blutlanze / Roter Strom / Verdichtung | Blutnova (Burst) | BuffField (gratis Blut) | Glass Cannon | ⏳ |
+| Frame Sorcery | 24-Bilder-Regel: wer deine Frames bricht, friert ein | Bildsprung / Bildfessel / Bildfolge | Zeitraffer (Transform) | Debuff | Lesbar, Regelbruch friert dich selbst ein | ⏳ |
+| Spell Voice | Befehle kosten CE + Selbstschaden | „Halt!“ / „Zerbirst!“ / „Fort!“ | Massenbefehl (Burst) | Lock | Selbstschaden, wenig Defense | ⏳ |
 
-## 7. Pakte ✅ (Grundsystem)
+## 7. Binding Oaths ✅ (Grundsystem)
 
 Verstecktes Layer: Spieler wählt **Kategorie + Größe**, nicht die Belohnung.
 
 | Kategorie | Opfer (`detail`) |
 |---|---|
 | Körper | Max-HP, Speed, Block-Stärke |
-| Ressource | Essenz-Pool, Essenz-Regen, Rückfluss-Heilung |
-| Technik | Skill 1/2/3 sperren, Realm verbieten, Apex verbieten |
+| Ressource | CE-Pool, CE-Regen, Reverse Flow-Heilung |
+| Technik | Skill 1/2/3 sperren, Realm verbieten, Max Output verbieten |
 | Regel | „nie blocken“, „nur Nahkampf“ |
 | Zeit | gilt nur 60 s, Wert ×1,5 |
 | Begleiter | Begleiter-HP, Slot sperren, Begleiter dauerhaft verlieren |
 
 **Versteckter Wert** = Größe (1/2/4) × Empfindlichkeit (0–10, abhängig von Body + Playstyle-Profil).
 Ungenutzte Skills sind fast wertlos, Caster zahlt für Regen viel, Heavy fast nichts.
-Nullgeboren: Wert max. 12.
+Heaven's Bind: Wert max. 12.
 
 | Wert | Stufe | Folge | Aura |
 |---|---|---|---|
-| < 4 | Zu billig | Backlash: Essenz-Leck, Cooldowns +25 % | Flackern |
+| < 4 | Zu billig | Backlash: CE-Leck, Cooldowns +25 % | Flackern |
 | 4–11 | Fair | +Schaden (max 15 %), +Realm-Gewinn | Ruhig |
-| 12–23 | Hoch | + **Offener Realm** (Nullgeboren: +1 Nullfunke-Frame) | Knistern |
+| 12–23 | Hoch | + **Offener Realm** (Heaven's Bind: +1 Black Spark-Frame) | Knistern |
 | ≥ 24 | Überzahlt | + kleiner Bonus (+5 %), nie das Doppelte | Knistern |
 
-Regeln: 1 Pakt pro Match, Belohnung nie größer als das Opfer, Gegner sieht nur **dass** ein Pakt aktiv ist.
+Regeln: 1 Binding Oath pro Match, Belohnung nie größer als das Opfer, Gegner sieht nur **dass** ein Binding Oath aktiv ist.
 Playstyle-Profil wird vor dem Match zwischen Clients ausgetauscht → deterministisch.
 
 ## 8. Balance-Framework
@@ -176,17 +181,17 @@ Playstyle-Profil wird vor dem Match zwischen Clients ausgetauscht → determinis
 ## 9. Begleiter-System ✅
 
 Begleiter kämpfen neben dem Spieler, sind aber **kein zweiter Char**, sondern ein Werkzeug:
-ein Spieler, zwei Ziele, **ein Essenz-Pool**. Code: `include/fightcore/Companion.h`, `src/Companion.cpp`.
+ein Spieler, zwei Ziele, **ein CE-Pool**. Code: `include/fightcore/Companion.h`, `src/Companion.cpp`.
 
 ### Wer bekommt Begleiter
 
 | Quelle | Begleiter | Regel |
 |---|---|---|
-| Summoner-Body | 1 permanenter Begleiter (frei wählbar) | Fällt aus → kehrt nach 15 s zurück, Revive kostet 150 Essenz (wartet, bis genug da ist) |
-| Schattenmenagerie | bis zu 2 Bestien aus dem Schattenpool | Skill beschwört; 3. Bestie ersetzt die älteste; gefallene sind für die Runde weg (Skill gesperrt) |
-| Andere Bodies | keiner | nur über zeitlich begrenzten Pakt |
+| Summoner-Body | 1 permanenter Begleiter (frei wählbar) | Fällt aus → kehrt nach 15 s zurück, Revive kostet 150 CE (wartet, bis genug da ist) |
+| Shadow Puppets | bis zu 2 Bestien aus dem Shadow Pool | Skill beschwört; 3. Bestie ersetzt die älteste; gefallene sind für die Runde weg (Skill gesperrt) |
+| Andere Bodies | keiner | nur über zeitlich begrenzten Binding Oath |
 
-Summoner + Schattenmenagerie geht: Assist + 2 Bestien (3 Slots).
+Summoner + Shadow Puppets geht: Assist + 2 Bestien (3 Slots).
 
 ### Steuerung
 
@@ -201,17 +206,17 @@ Summoner + Schattenmenagerie geht: Assist + 2 Bestien (3 Slots).
 ### Ressourcen
 
 - Begleiter-HP: eigene, kleine Leiste. Gegner können Begleiter direkt treffen (Melee + Projektile).
-- **Upkeep:** jeder Begleiter auf dem Feld zieht Essenz pro Frame → weniger für Skills, Apex, Realm.
+- **Upkeep:** jeder Begleiter auf dem Feld zieht CE pro Frame → weniger für Skills, Max Output, Realm.
 - **Schadens-Cap:** Begleiter-Treffer machen 60 % eines vergleichbaren Skills (Engine-Regel).
 
 ### Begleiter-Typen & Aktions-Bausteine
 
-| Typ | Aufgabe | Summoner-Beispiel | Schattenpool |
+| Typ | Aufgabe | Summoner-Beispiel | Shadow Pool |
 |---|---|---|---|
-| Striker | Offense, Druck, Combo-Verlängerung | Klingenwolf | Schattenhunde |
-| Zoner | Projektile, Anti-Air, Raumkontrolle | Funkeneule | Nachtschwinge |
-| Support | Grabs, Pulls, Utility | Rankenkröte | Schlundkröte |
-| Guard | blockt für den Spieler (auch beim Rückfluss) | Steinwächter | – |
+| Striker | Offense, Druck, Combo-Verlängerung | Blade Wolf | Shadow Hounds |
+| Zoner | Projektile, Anti-Air, Raumkontrolle | Spark Owl | Night Wing |
+| Support | Grabs, Pulls, Utility | Vine Toad | Maw Toad |
+| Guard | blockt für den Spieler (auch beim Reverse Flow) | Stone Warden | – |
 
 Jede Aktion ist aus generischen Bausteinen gebaut: **Rush** (hinsprinten + Schlag), **Shoot** (Projektil),
 **Rise** (Anti-Air vor dem Spieler), **Pull** (Gegner zum Spieler ziehen, unblockbar), **Shield**
@@ -230,40 +235,51 @@ Fällt ein Begleiter, ist der Bond-Fortschritt weg.
 ### Schwächen & Counterplay
 
 - Gegner kann den Begleiter ignorieren und den Spieler angreifen (Leash).
-- Begleiter sind **nicht realm-immun**: Sure-Hit-Schaden und Lock erfassen sie (auch wenn der Spieler im Schutzkreis steht).
+- Begleiter sind **nicht realm-immun**: Guaranteed Hit-Schaden und Lock erfassen sie (auch wenn der Spieler im Simple Realm steht).
 - Begleiter verlieren → weniger Druck, Utility und Bond.
 
-### Pakt-Anbindung
+### Oath-Anbindung
 
 Opfer-Feld **Begleiter**: HP, Slot sperren, Begleiter dauerhaft verlieren. Ohne Begleiter wertlos (Backlash).
 
 | Stufe | Hidden Reward |
 |---|---|
-| Hoch | **Paktgeist**: temporärer Zusatz-Begleiter (30 s, kein Upkeep) |
-| Überzahlt | **Wandler**: mächtige Sonderform mit **Adaption** – dieselbe Angriffs-Kategorie macht beim 2. Treffer nur noch halben Schaden |
+| Hoch | **Oath Spirit**: temporärer Zusatz-Begleiter (30 s, kein Upkeep) |
+| Überzahlt | **The Adaptor**: mächtige Sonderform mit **Adaption** – dieselbe Angriffs-Kategorie macht beim 2. Treffer nur noch halben Schaden |
 
-Bodies ohne Begleiter: ein **Zeit-Pakt** mit hohem Wert gibt einen Paktgeist für die Dauer des Pakts.
+Bodies ohne Begleiter: ein **zeitlich begrenzter Binding Oath** mit hohem Wert gibt einen Oath Spirit für die Dauer des Oaths.
 
 ## 10. Spielmodi ✅
 
-| Modus | Spieler | Regeln | Arena |
+| Modus | Spieler | Regeln | Kolonie |
 |---|---|---|---|
-| **1v1** | 2 | Elimination | 24 × 24 m |
-| **2v2** | 4 | Team-Elimination, kein Friendly Fire | 28 × 28 m |
-| **Brawl** | bis 20 | Free-for-all, Respawn nach 5 s, 5 min Zeitlimit oder 15 K.O.s, meiste K.O.s gewinnen | 120 × 120 m |
+| **1v1** | 2 | Elimination | Shrine Ward (Radius 14 m) |
+| **2v2** | 4 | Team-Elimination, kein Friendly Fire | Harbor District (20 m) |
+| **Brawl** | bis 20 | Offene Kolonie: **kein Zeitlimit, keine Leben**, Respawn nach 5 s, endet nie | Old Capital (70 m) |
+| **Custom** | bis 20 | Eigene Teams (0 = jeder gegen jeden, bis 20 Teams), Ziel frei wählbar, Friendly Fire an/aus, Punkte-/Zeitlimit, Respawn-Zeit | jede Kolonie |
 
-- Alle Modi **online oder lokal** (Splitscreen bis 4 Spieler). Nicht volle Lobbys werden mit **Bots**
-  aufgefüllt (3 Stufen: leicht / normal / schwer). Details: [NETWORKING.md](NETWORKING.md).
-- **Lock-on:** automatisch auf den nächsten Gegner, L3 wechselt das Ziel (bleibt dann fest, bis es K.O. ist).
+**Custom-Ziele:**
+
+| Ziel | Regel |
+|---|---|
+| Elimination | Letztes Team steht, kein Respawn |
+| Deathmatch | Jeder K.O. = 1 Punkt fürs Team (FFA: eigene K.O.s) |
+| Capture the Flag | Gegnerische Flagge zur eigenen Basis bringen, während die eigene zu Hause ist. Fallengelassene Flaggen kehren nach 15 s zurück oder per Berührung durchs eigene Team. Bis zu 4 Flaggen-Teams. |
+| Oddball | Ball halten = 1 Punkt pro Sekunde |
+| Checkpoints | Zonen allein besetzen (4 s) → gehören dem Team, jede Zone = 1 Punkt pro Sekunde. Umkämpfte Zonen werden nicht eingenommen. |
+
+- **Flaggen- und Ballträger können ihre Technik nicht nutzen** (nur Nahkampf), damit Träger angreifbar bleiben.
+- Alle Modi **online (P2P) oder lokal** (Splitscreen bis 4). Freie Plätze werden mit **Bots** aufgefüllt
+  (3 Stufen). Bots spielen auch die Ziele. Details: [NETWORKING.md](NETWORKING.md).
+- **Lock-on:** automatisch auf den nächsten Gegner, L3 wechselt das Ziel.
 - **K.O.-Wertung:** Wer den letzten Treffer setzt (auch Realm-Schaden, Brennen), bekommt den K.O.
 - **Realms haben einen Radius** (geschlossen 18 m um den Cast-Punkt, offen 10 m um den Besitzer).
-  Im Brawl kann es mehrere Realms gleichzeitig geben. Wer in einem gegnerischen Realm seinen eigenen
-  öffnet, löst einen Clash gegen dessen Besitzer aus.
+  Mehrere Realms gleichzeitig sind möglich; wer im gegnerischen Realm seinen eigenen öffnet, löst einen Clash aus.
 
 ## 11. Offene Punkte
 
-- [ ] Restliche 7 Techniken implementieren (Echo braucht noch einen Guard-Begleiter)
-- [ ] Notfall-Pakt mitten im Match, Technik-spezifische Hidden Rewards, Vow-Journal
+- [ ] Restliche 7 Techniken implementieren (Pure Love braucht noch den Bound Spirit als Guard-Begleiter)
+- [ ] Notfall-Binding Oath mitten im Match, Technik-spezifische Hidden Rewards, Vow-Journal
 - [ ] Synergie-Matrix Bodies × Techniken
 - [ ] Realm-Clash-Regeln pro Body
 - [ ] Frame-Daten-Feinschliff per Playtest

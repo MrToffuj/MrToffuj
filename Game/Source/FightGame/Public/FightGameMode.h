@@ -5,8 +5,7 @@
 
 #include "FightGameMode.generated.h"
 
-// Legt die lokalen Spieler an (1-4, Splitscreen) und startet den FightDirector.
-// Es gibt keine Pawns – die Kämpfer leben in der deterministischen Simulation.
+// Creates the local players and spawns the director. No pawns, the fighters live in the simulation.
 UCLASS()
 class FIGHTGAME_API AFightGameMode : public AGameModeBase
 {

@@ -6,8 +6,8 @@
 class APlayerController;
 struct FFightBindings;
 
-// Liest Controller + Tastatur und baut daraus fc::FrameInput für den festen 60-Hz-Tick.
-// Kurze Taps zwischen zwei Sim-Ticks gehen nicht verloren (Latch), wichtig bei schwankender FPS (Handhelds).
+// Turns pad and keyboard state into fc::FrameInput for the fixed 60 Hz tick. Presses are latched between
+// ticks so quick taps survive low or uneven frame rates (handhelds).
 class FIGHTGAME_API FFightInputSampler
 {
 public:
@@ -15,8 +15,8 @@ public:
 	void Sample(const APlayerController* Own, const APlayerController* KeyboardOwner, const FFightBindings& Pad,
 		const FFightBindings& Keys);
 
-	// Einmal pro Sim-Tick. Die Kamera sitzt hinter dem Kämpfer, daher entspricht der Stick direkt
-	// der Sim-Richtung: hoch = zum Gegner, seitlich = umkreisen.
+	// Once per sim tick. The camera sits behind the fighter, so the stick maps straight onto the
+	// simulation's directions.
 	fc::FrameInput Build(float Deadzone);
 
 private:

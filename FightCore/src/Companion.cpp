@@ -1,4 +1,3 @@
-// Begleiter-System: Roster, Befehle, Verhalten, Schaden, Leash, Realm-Interaktion.
 #include "Internal.h"
 
 namespace fc {
@@ -45,10 +44,10 @@ void abortAction(CompanionState& c, const CompanionDef& d) {
 }
 
 const CompanionType kPreference[4][4] = {
-    {CompanionType::Striker, CompanionType::Zoner, CompanionType::Support, CompanionType::Guard},   // Attack
-    {CompanionType::Striker, CompanionType::Support, CompanionType::Zoner, CompanionType::Guard},   // Pressure
-    {CompanionType::Zoner, CompanionType::Striker, CompanionType::Support, CompanionType::Guard},   // AntiAir
-    {CompanionType::Guard, CompanionType::Support, CompanionType::Striker, CompanionType::Zoner},   // Protect
+    {CompanionType::Striker, CompanionType::Zoner, CompanionType::Support, CompanionType::Guard},
+    {CompanionType::Striker, CompanionType::Support, CompanionType::Zoner, CompanionType::Guard},
+    {CompanionType::Zoner, CompanionType::Striker, CompanionType::Support, CompanionType::Guard},
+    {CompanionType::Guard, CompanionType::Support, CompanionType::Striker, CompanionType::Zoner},
 };
 
 bool ready(const CompanionState& c) { return c.onField() && c.action < 0 && c.lock == 0; }
@@ -71,7 +70,7 @@ void startAction(MatchState& m, const MatchSetup& s, int owner, int slot, Assist
     c.hasHit = false;
     c.link = link && (a.kind == AssistKind::Rush || a.kind == AssistKind::Pull || a.kind == AssistKind::Rise);
     if (c.link && m.f[owner].target >= 0) {
-        // Link-Attack: Begleiter taucht direkt am Gegner auf und schlägt sofort zu
+        // link attack: show up right next to the target and hit immediately
         const FighterState& o = m.f[m.f[owner].target];
         Vec3 dir = normalizeXZ(o.pos - m.f[owner].pos, m.f[owner].facing);
         c.pos = o.pos - dir * Fx::ratio(8, 10);
@@ -126,7 +125,7 @@ void initCompanions(MatchState& m, const MatchSetup& s, int i) {
         int slot = 0;
         if (s.assistRoster[i] >= 0 && !(pm.lockedCompanionSlots > 0 && !techComps)) {
             place(m, s, i, slot++, s.assistRoster[i], homePos(f, 0));
-            if (pm.companionLost && !techComps) f.lostMask |= static_cast<uint8_t>(1u << s.assistRoster[i]); // kein Revive
+            if (pm.companionLost && !techComps) f.lostMask |= static_cast<uint8_t>(1u << s.assistRoster[i]);  // no revive
         }
         if (pm.companionLost && techComps) f.lostMask |= static_cast<uint8_t>(1u << s.techRosterStart[i]);
         if (s.oathRoster[i] >= 0) {
@@ -149,12 +148,12 @@ void tryAssistCommand(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
     const int a = f.input.pressAge(BtnAssist, kBufferWindow);
     if (a < 0) return;
     const uint8_t dir = f.input.ago(a).dir;
-    const AssistRole role = dir >= 7 ? AssistRole::Pressure                 // vor
-                          : dir <= 3 ? AssistRole::Protect                  // zurück
-                          : dir == 4 || dir == 6 ? AssistRole::AntiAir      // seitlich
+    const AssistRole role = dir >= 7 ? AssistRole::Pressure
+                          : dir <= 3 ? AssistRole::Protect
+                          : dir == 4 || dir == 6 ? AssistRole::AntiAir
                           : AssistRole::Attack;
     const int slot = pickSlot(m, s, owner, role);
-    if (slot < 0) return; // bleibt gebuffert
+    if (slot < 0) return;  // stays buffered
     f.input.consume(BtnAssist, kBufferWindow);
     const bool link = bondLevel(f) >= 2 && f.state == FState::Attack && f.moveHasHit;
     startAction(m, s, owner, slot, role, link, ev);
@@ -183,7 +182,7 @@ void tickCompanions(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
                     c.pos = homePos(f, slot);
                     emit(ev, m, ImpactKind::CompanionRevive, owner, ImpactClass::Medium, c.pos, {}, Fx{});
                 } else {
-                    c.down = 1; // wartet auf genug Essenz
+                    c.down = 1;  // wait for enough CE
                 }
             }
             continue;
@@ -256,7 +255,7 @@ void companionAttacks(MatchState& m, const MatchSetup& s, int owner, Ev ev) {
         if (target < 0) continue;
         c.hasHit = true;
         PendingHit h{true, &d.moves[a.move], -1, false, center, c.facing};
-        if (a.kind == AssistKind::Pull) h.dir = normalizeXZ(f.pos - m.f[target].pos, c.facing); // zum Spieler ziehen
+        if (a.kind == AssistKind::Pull) h.dir = normalizeXZ(f.pos - m.f[target].pos, c.facing);
         h.companion = c.roster;
         h.link = c.link;
         h.source = c.pos;
@@ -298,7 +297,7 @@ bool projectileHitsCompanion(MatchState& m, const MatchSetup& s, Projectile& p, 
 
 int shieldingCompanion(const MatchState& m, const MatchSetup& s, int defender, Vec3 source) {
     const FighterState& f = m.f[defender];
-    if (dot(f.facing, source - f.pos) <= Fx{}) return -1; // nur Treffer von vorne
+    if (dot(f.facing, source - f.pos) <= Fx{}) return -1;
     for (int slot = 0; slot < kCompanionSlots; ++slot) {
         const CompanionState& c = f.comp[slot];
         if (!c.onField() || c.action < 0 || c.lock > 0) continue;
@@ -314,7 +313,7 @@ void damageCompanion(MatchState& m, const MatchSetup& s, int owner, int slot, in
     CompanionState& c = f.comp[slot];
     const CompanionDef& d = companionDef(s, owner, c);
     if (d.adaptive) {
-        // Adaption: dieselbe Angriffs-Kategorie macht beim nächsten Mal nur halben Schaden
+        // same attack type a second time only does half
         const uint8_t bit = catBit(cat);
         if (c.adapted & bit) amount /= 2;
         c.adapted = static_cast<uint8_t>(c.adapted | bit);
@@ -324,15 +323,15 @@ void damageCompanion(MatchState& m, const MatchSetup& s, int owner, int slot, in
     if (c.hp > 0) return;
 
     emit(ev, m, ImpactKind::CompanionDown, owner, ImpactClass::Heavy, c.pos, {}, Fx{});
-    f.bond = 0; // Bond-Fortschritt weg
+    f.bond = 0;
     const uint8_t bit = static_cast<uint8_t>(1u << c.roster);
     if (c.roster == s.assistRoster[owner] && !(f.lostMask & bit)) {
         c.hp = 0;
         c.action = -1;
         c.link = false;
-        c.down = d.reviveFrames; // Summoner-Assist kommt zurück
+        c.down = d.reviveFrames;  // the summoner assist comes back
     } else {
-        f.lostMask = static_cast<uint8_t>(f.lostMask | bit); // für die Runde weg
+        f.lostMask = static_cast<uint8_t>(f.lostMask | bit);  // gone for the round
         c = CompanionState{};
     }
 }
@@ -366,7 +365,6 @@ void realmHitsCompanions(MatchState& m, const MatchSetup& s, int owner, RealmCla
 
 } // namespace detail
 
-// ---------------------------------------------------------------- TechContext-Anbindung
 int TechContext::companionSlot(int16_t techCompanion) const {
     const int r = setup.techRosterStart[self] + techCompanion;
     for (int i = 0; i < kCompanionSlots; ++i)

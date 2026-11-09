@@ -1,11 +1,7 @@
-// ============================================================================
-// NULLRAUM
-//  Core Rule : Distanzfeld – blockt Projektile und Lights automatisch, kostet Essenz.
-//  Skills    : Abstoßung (Offense), Anziehung (Utility), Faltschritt (Movement)
-//  MaxOutput      : Singularität (Burst)
-//  Realm     : Ereignishorizont (Lock)
-//  Schwäche  : Essenz leer / Burnout = Feld weg. Grabs gehen immer durch.
-// ============================================================================
+// Boundless
+// Core rule: Infinite Gap, auto-blocks projectiles and lights while there's CE left.
+// Skills: Repel, Attract, Fold Step. Max Output: Singularity. Realm: Endless Void (lock).
+// Weakness: out of CE means no gap, and grabs always get through.
 #include "Techniques.h"
 
 #include "fightcore/Simulation.h"
@@ -14,7 +10,7 @@ namespace fc::techniques {
 namespace {
 
 enum : int { kKnotTimer = 0, kKnotX = 1, kKnotZ = 2 };
-constexpr int32_t kFieldCost = 3000; // 30 Essenz pro abgefangenem Treffer
+constexpr int32_t kFieldCost = 3000;  // 30 CE per blocked hit
 
 class BoundlessLogic final : public TechniqueLogic {
 public:
@@ -30,7 +26,7 @@ public:
                 break;
             }
             case kFoldStep: {
-                // Kurz-Teleport: 4 Einheiten nach vorne (oder zurück, wenn der Stick nach hinten zeigt)
+                // blink 4 m forward, or back if the stick points back
                 Fx dist = Fx::fromInt(me.input.current().dir <= 3 ? -4 : 4);
                 c.emit(ImpactKind::TechniqueFx, me.pos, {}, Fx{}, ImpactClass::Light, 2);
                 me.pos += me.facing * dist;
@@ -56,7 +52,7 @@ public:
     }
 
     void onRealmTick(const TechContext& c) const override {
-        // Ereignishorizont zieht den Gegner permanent heran
+        // Endless Void keeps pulling the target in
         pull(c.opp(), c.me().pos, Fx::fromInt(30), Fx::ratio(3, 100));
     }
 
@@ -64,7 +60,7 @@ public:
         FighterState& me = c.me();
         if (me.burnout > 0 || me.ce < kFieldCost) return false;
         const bool light = mv.category == MoveCategory::Normal && mv.hit.impact == ImpactClass::Light;
-        if (!projectile && !light) return false; // Grabs, Heavies, Skills gehen durch
+        if (!projectile && !light) return false;
         me.ce -= kFieldCost;
         return true;
     }

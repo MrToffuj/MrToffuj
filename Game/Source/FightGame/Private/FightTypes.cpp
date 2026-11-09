@@ -1,7 +1,7 @@
 #include "FightTypes.h"
 
-static_assert(static_cast<int>(EFightImpactKind::Respawn) == static_cast<int>(fc::ImpactKind::Respawn),
-	"EFightImpactKind muss fc::ImpactKind spiegeln");
+static_assert(static_cast<int>(EFightImpactKind::ZoneCaptured) == static_cast<int>(fc::ImpactKind::ZoneCaptured),
+	"EFightImpactKind is out of sync with fc::ImpactKind");
 
 FFightImpact FightUnits::ToImpact(const fc::ImpactEvent& E)
 {

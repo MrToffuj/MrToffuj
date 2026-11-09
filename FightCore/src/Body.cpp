@@ -16,7 +16,7 @@ BodyStats deriveStats(const BodyDef& b) {
     s.reach = Fx::ratio(850 + b.range * 75, 1000);
     s.ceMax = (400 + b.ce * 150) * 100;
     s.ceRegen = 4 + b.ce * 3;
-    s.realmGainPct = static_cast<int16_t>(80 + b.ce * 10); // Caster lädt schneller, Heavy langsamer
+    s.realmGainPct = static_cast<int16_t>(80 + b.ce * 10);
     s.simpleRealmDrain = 150;
 
     if (b.has(PassiveFastRegen)) s.ceRegen = s.ceRegen * 3 / 2;
@@ -28,14 +28,13 @@ BodyStats deriveStats(const BodyDef& b) {
         s.dashSpeed = s.dashSpeed * Fx::ratio(12, 10);
         s.damagePct = 115;
         s.guaranteedHitImmune = true;
-        s.ceMax = 0; // keine Essenz: kein Burst, keine Verstärkung, keine Heilung
+        s.ceMax = 0;  // no CE at all
         s.ceRegen = 0;
     }
     return s;
 }
 
 namespace bodies {
-//                                  name          HP Spd CE Rng  Passive
 const BodyDef& heavy()      { static const BodyDef b{"Heavy",      5, 1, 2, 2, PassiveSuperArmor | PassiveStrongGrab}; return b; }
 const BodyDef& speedster()  { static const BodyDef b{"Speedster",  1, 5, 2, 2, PassiveDashCancel | PassiveFlankCrit}; return b; }
 const BodyDef& caster()     { static const BodyDef b{"Caster",     1, 2, 4, 3, PassiveFastRegen | PassiveQuickSkills}; return b; }

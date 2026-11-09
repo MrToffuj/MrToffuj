@@ -21,11 +21,9 @@ struct FFightChaseCamera
 	bool bInitialized = false;
 };
 
-// Brücke zwischen FightCore und Unreal:
-//  - tickt die deterministische Simulation mit festen 60 Hz (unabhängig von der Render-FPS)
-//  - liest Controller/Tastatur der lokalen Spieler (bis zu 4, Splitscreen); freie Slots sind Bots
-//  - interpoliert die Optik zwischen zwei Sim-Frames
-//  - leitet Simulations-Events an Blueprints/VFX/Zerstörung weiter (OnImpact)
+// Owns the match. Runs the simulation at a fixed 60 Hz, feeds it local input, draws the
+// result and forwards simulation events to whoever wants them (VFX, destruction, audio).
+// Unreal never writes into the simulation state.
 UCLASS()
 class FIGHTGAME_API AFightDirector : public AActor
 {
@@ -40,8 +38,6 @@ public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 
-	// Feuert für jedes Simulations-Event (Treffer, Wandbruch, Realm, K.O., Begleiter ...).
-	// Hier hängen später Niagara-Effekte, Chaos-Zerstörung, Sound und Impact-Frames dran.
 	UPROPERTY(BlueprintAssignable, Category = "Fight")
 	FOnFightImpact OnImpact;
 
@@ -54,20 +50,25 @@ public:
 	int32 GetRollbackCount() const { return Session ? Session->rollbackCount() : 0; }
 	float GetImpactFlash() const { return ImpactFlash; }
 	int32 GetLocalPlayerCount() const { return LocalPlayers; }
-	// Kämpfer-Index dieses lokalen Controllers (lokale Spieler belegen die ersten Slots), -1 = keiner
+
+	// Local players own the first fighter slots. Returns -1 for anything else.
 	int32 GetPlayerIndex(const APlayerController* PC) const;
-	// "P1".."P4" für Menschen, "BOT 5" usw. für Bots
 	FString GetFighterLabel(int32 Fighter) const;
 	FLinearColor GetFighterColor(int32 Fighter) const;
+	FLinearColor GetTeamColor(int32 Team) const;
 
 private:
 	void BuildSession();
-	void SpawnVisuals();
+	void SpawnArena();
+	void SpawnFighterVisuals();
 	void SimulateFrame();
 	void HandleEvent(const fc::ImpactEvent& Event);
 	void Present(float Alpha, float DeltaSeconds);
+	void PresentObjective();
 	void UpdateCameras(float DeltaSeconds);
 	void DrawHitboxes() const;
+
+	AFightShapeVisual* SpawnShape(int32 Shape, const FLinearColor& Color, const FVector& SizeCm, const FVector& Offset);
 
 	TUniquePtr<fc::Session> Session;
 	fc::MatchState Previous;
@@ -78,7 +79,6 @@ private:
 	double Accumulator = 0.0;
 	int32 RoundOverFrames = 0;
 
-	// Präsentation
 	float ShakeTime = 0.f;
 	float ShakeStrength = 0.f;
 	float ImpactFlash = 0.f;
@@ -87,9 +87,12 @@ private:
 	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> FighterVisuals;
 	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> CompanionVisuals;
 	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> ProjectileVisuals;
-	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> WallVisuals;
+	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> ObstacleVisuals;
+	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> BarrierVisuals;
+	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> FlagVisuals;
+	UPROPERTY() TArray<TObjectPtr<AFightShapeVisual>> ZoneVisuals;
+	UPROPERTY() TObjectPtr<AFightShapeVisual> BallVisual;
 	UPROPERTY() TObjectPtr<AFightShapeVisual> FloorVisual;
-	// Eine Kamera pro lokalem Spieler
 	UPROPERTY() TArray<TObjectPtr<ACameraActor>> Cameras;
 
 	UPROPERTY(VisibleAnywhere, Category = "Fight") TObjectPtr<USceneComponent> Root;

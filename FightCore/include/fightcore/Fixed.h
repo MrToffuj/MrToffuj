@@ -1,7 +1,6 @@
 #pragma once
-// Deterministische Fixed-Point-Mathe (Q16.16).
-// Die Kampfsimulation benutzt NIE float/double, damit Rollback-Netcode
-// auf jeder Plattform (PC, Konsole, Handheld) bit-genau gleich rechnet.
+// Q16.16 fixed point. The simulation never touches float so rollback
+// stays bit-identical across PC, consoles and handhelds.
 #include <compare>
 #include <cstdint>
 
@@ -21,7 +20,7 @@ struct Fx {
     }
 
     constexpr int32_t toInt() const { return raw >> kShift; }
-    // Nur für Präsentation (Rendering) – niemals in der Simulation verwenden.
+    // rendering only
     float toFloat() const { return static_cast<float>(raw) / static_cast<float>(kOne); }
 
     friend constexpr Fx operator+(Fx a, Fx b) { return fromRaw(a.raw + b.raw); }
@@ -52,7 +51,7 @@ constexpr uint64_t isqrt64(uint64_t n) {
     return res;
 }
 
-// Konvention: X = rechts, Y = oben, Z = vorne.
+// x right, y up, z forward
 struct Vec3 {
     Fx x, y, z;
 
@@ -70,7 +69,7 @@ constexpr int64_t lengthSqRaw(Vec3 v) {
 constexpr Fx length(Vec3 v) { return Fx::fromRaw(static_cast<int32_t>(isqrt64(static_cast<uint64_t>(lengthSqRaw(v))))); }
 constexpr Fx dot(Vec3 a, Vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
-// Normalisiert auf der Boden-Ebene (XZ). Gibt fallback zurück, wenn v ~ 0.
+// Normalized on the ground plane. Returns fallback for (near) zero vectors.
 constexpr Vec3 normalizeXZ(Vec3 v, Vec3 fallback) {
     Vec3 flat{v.x, Fx{}, v.z};
     Fx len = length(flat);

@@ -4,7 +4,6 @@
 
 namespace fc {
 
-// ============================================================ Basis-Moves (für alle Builds gleich)
 namespace {
 
 std::vector<MoveDef> buildBaseMoves() {
@@ -137,7 +136,6 @@ bool carriesObjective(const MatchState& m, int i) {
     return false;
 }
 
-// ============================================================ TechContext
 FighterState& TechContext::me() const { return m.f[self]; }
 FighterState& TechContext::opp() const { return m.f[hasTarget() ? m.f[self].target : self]; }
 bool TechContext::hasTarget() const { return m.f[self].target >= 0; }
@@ -171,7 +169,6 @@ void TechContext::damage(int target, int16_t amount) const {
     t.lastHitBy = static_cast<int8_t>(self);
 }
 
-// ============================================================ Simulation
 namespace detail {
 
 void emit(Ev ev, const MatchState& m, ImpactKind k, int src, ImpactClass s, Vec3 pos, Vec3 dir, Fx force, int16_t tag) {
@@ -195,7 +192,6 @@ bool overlap(Vec3 a, Fx ra, Vec3 b, Fx rb) {
 
 Fx distXZ(Vec3 a, Vec3 b) { return length(Vec3{a.x - b.x, Fx{}, a.z - b.z}); }
 
-// ---- Realms
 bool inRealmArea(const MatchState& m, int owner, Vec3 p) {
     const FighterState& o = m.f[owner];
     const Vec3 center = o.realm.open ? o.pos : o.realm.center;
@@ -248,7 +244,6 @@ int32_t skillCost(const MatchState& m, const MatchSetup& s, int i, int slot) {
     return c;
 }
 
-// ---- Ziele
 int nearestEnemy(const MatchState& m, int i) {
     int best = -1;
     int64_t bestDist = 0;
@@ -266,7 +261,7 @@ void updateTarget(MatchState& m, int i) {
     const bool valid = f.target >= 0 && isEnemy(m, i, f.target) && !m.f[f.target].out;
     if (f.input.pressedWithin(BtnTarget, 3)) {
         f.input.consume(BtnTarget, 3);
-        // Nächster lebender Gegner nach Index (zyklisch)
+        // next living enemy by index
         for (int k = 1; k <= m.count; ++k) {
             const int j = (f.target + k + m.count) % m.count;
             if (isEnemy(m, i, j) && !m.f[j].out) { f.target = static_cast<int8_t>(j); f.manualTarget = true; return; }
@@ -276,11 +271,10 @@ void updateTarget(MatchState& m, int i) {
         f.target = static_cast<int8_t>(nearestEnemy(m, i));
         f.manualTarget = false;
     } else if (!f.manualTarget && (m.frame + i) % 20 == 0) {
-        f.target = static_cast<int8_t>(nearestEnemy(m, i)); // Auto-Lock auf den Nächsten
+        f.target = static_cast<int8_t>(nearestEnemy(m, i));
     }
 }
 
-// ---- Commands
 struct Cmd {
     int16_t move = -1;
     int8_t skill = -1;
@@ -295,7 +289,7 @@ Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
     const TechniqueDef* T = s.loadout[i].technique;
     const OathModifiers& pm = mods(m, s, i);
     auto age = [&](uint16_t b) { return f.input.pressAge(b, kBufferWindow); };
-    // Modifier/Guard zählen im Frame des Tastendrucks, nicht beim (gebufferten) Auslesen.
+    // Modifiers count if they were held when the button went down, not when we read the buffer.
     auto heldAt = [&](int a, uint16_t b) { return (f.input.ago(a).buttons & b) != 0; };
     auto ok = [&](Cmd c, uint16_t btn, int a) { c.button = btn; c.age = a; f.input.consume(btn, kBufferWindow); return c; };
     int a;
@@ -334,7 +328,7 @@ Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
     const uint16_t btns[3] = {BtnLight, BtnHeavy, BtnGrab};
     for (int slot = 0; slot < 3; ++slot) {
         if ((a = age(btns[slot])) < 0 || !heldAt(a, BtnMod)) continue;
-        // Mod gehalten -> Skill oder nichts (nie versehentliche Normals)
+        // holding Mod never falls through to a normal
         if (!T || carrying || f.burnout > 0 || f.cooldown[slot] > 0 || (pm.lockedSkills & (1 << slot))) return {};
         if (T->logic && !T->logic->canUseSkill(TechContext{m, s, i, nullptr}, slot)) return {};
         if (!(allowed & catBit(MoveCategory::Skill))) return {};
@@ -352,7 +346,7 @@ Cmd resolveCommand(MatchState& m, const MatchSetup& s, int i, uint8_t allowed) {
     if ((a = age(BtnGrab)) >= 0 && (allowed & catBit(MoveCategory::Grab))) { Cmd c; c.move = kGrab; return ok(c, BtnGrab, a); }
     if (!(allowed & catBit(MoveCategory::Normal))) return {};
     if ((a = age(BtnHeavy)) >= 0) {
-        Cmd c; c.move = f.input.ago(a).dir <= 3 ? kLauncher : kHeavy; return ok(c, BtnHeavy, a); // zurück + Heavy
+        Cmd c; c.move = f.input.ago(a).dir <= 3 ? kLauncher : kHeavy; return ok(c, BtnHeavy, a);  // back + Heavy launches
     }
     if ((a = age(BtnLight)) >= 0) { Cmd c; c.move = kLight; return ok(c, BtnLight, a); }
     return {};
@@ -403,7 +397,7 @@ Vec3 dirToVelocity(const FighterState& f, const BodyStats& st, uint8_t dir, int 
 
 int speedPctOf(const MatchState& m, const MatchSetup& s, int i) {
     int p = mods(m, s, i).speedPct;
-    // Geschlossener Realm: Besitzer muss ihn aufrechterhalten -> halbes Tempo. Offener Realm: volle Bewegung.
+    // keeping a closed realm up slows you down
     const RealmState& r = m.f[i].realm;
     if (r.active() && !r.open) p /= 2;
     return p;
@@ -413,7 +407,7 @@ void openRealm(MatchState& m, const MatchSetup& s, int i, Ev ev) {
     FighterState& f = m.f[i];
     const int defender = enemyRealmAround(m, i);
     if (defender >= 0 && m.f[defender].realm.clashWith < 0) {
-        // Gegen-Realm im gegnerischen Realm -> Clash (Input-Duell: Light hämmern)
+        // casting inside an enemy realm starts a clash
         for (int k : {i, defender}) {
             FighterState& x = m.f[k];
             x.realm.clashWith = static_cast<int8_t>(k == i ? defender : i);
@@ -441,7 +435,7 @@ void tickResources(MatchState& m, const MatchSetup& s, int i, Ev ev) {
 
     for (int16_t& cd : f.cooldown) {
         if (cd > 0) --cd;
-        if (cd > 0 && buffed(m, s, i)) --cd; // BuffField: doppelt schnelle Cooldowns
+        if (cd > 0 && buffed(m, s, i)) --cd;
     }
     if (f.burnout > 0) --f.burnout;
     if (f.oathTimer > 0) --f.oathTimer;
@@ -479,7 +473,7 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
         f.state != FState::Clash)
         f.facing = normalizeXZ(m.f[f.target].pos - f.pos, f.facing);
 
-    // Essenz-Burst geht auch aus Hit-/Blockstun (Notfall-Pushback)
+    // CE burst works out of hitstun
     if (f.state == FState::Hitstun || f.state == FState::Blockstun) {
         Cmd c = resolveCommand(m, s, i, catBit(MoveCategory::Burst));
         if (c.move >= 0) {
@@ -489,7 +483,6 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
         }
     }
 
-    // Begleiter rufen geht parallel zu fast allem (nicht aus Stun / Lock / Clash)
     if (f.state != FState::Hitstun && f.state != FState::Blockstun && f.state != FState::Locked &&
         f.state != FState::Clash && f.state != FState::Knockdown)
         tryAssistCommand(m, s, i, ev);
@@ -507,7 +500,7 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
             }
             if (f.input.pressedWithin(BtnDash, 3)) {
                 f.input.consume(BtnDash, 3);
-                if (mod) { // Verstärkung umschalten
+                if (mod) {
                     f.reinforce = !f.reinforce && f.ce > 0 && f.burnout == 0;
                     break;
                 }
@@ -562,7 +555,7 @@ void updateFighter(MatchState& m, const MatchSetup& s, int i, Ev ev) {
                 else if (f.moveId >= kTechMoveOffset)
                     if (const TechniqueLogic* l = logicOf(s, i))
                         l->onMoveEvent(TechContext{m, s, i, ev}, static_cast<int16_t>(f.moveId - kTechMoveOffset));
-                if (f.state != FState::Attack) break; // z. B. Clash gestartet
+                if (f.state != FState::Attack) break;  // a clash took over
             }
             if (f.moveHasHit) {
                 if (mv.cancelMask) {
@@ -716,7 +709,7 @@ void pushApart(MatchState& m, const MatchSetup& s) {
             if (b.out || abs(a.pos.y - b.pos.y) > Fx::fromInt(2)) continue;
             Vec3 diff{b.pos.x - a.pos.x, Fx{}, b.pos.z - a.pos.z};
             const Fx minDist = s.stats[i].pushRadius + s.stats[j].pushRadius;
-            if (abs(diff.x) >= minDist || abs(diff.z) >= minDist) continue; // schneller Ausschluss
+            if (abs(diff.x) >= minDist || abs(diff.z) >= minDist) continue;
             const Fx dist = length(diff);
             if (dist >= minDist) continue;
             Vec3 half = normalizeXZ(diff, a.facing) * ((minDist - dist) * Fx::ratio(1, 2));
@@ -756,7 +749,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     const bool fromCompanion = h.companion >= 0;
     const Vec3 src = fromCompanion ? h.source : a.pos;
 
-    // Wächter-Begleiter fängt Treffer von vorne ab (Grabs gehen durch)
+    // a shielding companion eats hits from the front
     if (!p.unblockable) {
         int guard = shieldingCompanion(m, s, di, src);
         if (guard >= 0) {
@@ -768,7 +761,6 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
         }
     }
 
-    // Core Rules wie ein Auto-Block-Feld
     if (dl && dl->nullifiesIncoming(dctx, mv, h.projectile)) {
         a.hitstop = d.hitstop = 4;
         emit(ev, m, ImpactKind::Nullified, di, p.impact, h.point, h.dir, p.knockback);
@@ -797,7 +789,6 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
         return;
     }
 
-    // Schaden berechnen
     int dmg = p.damage;
     int scale = 100 - d.comboTaken * 10;
     dmg = dmg * (scale < 30 ? 30 : scale) / 100;
@@ -815,9 +806,9 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
         if (h.link) dmg = dmg * 125 / 100;
     }
     if (!h.projectile && !fromCompanion && s.loadout[atk].body->has(PassiveFlankCrit) && dot(d.facing, h.dir) > Fx::ratio(-1, 2))
-        dmg = dmg * 130 / 100; // Treffer von Seite/Rücken
+        dmg = dmg * 130 / 100;  // speedster flank crit
 
-    // Nullfunke: Normal perfekt auf das Hitstop-Ende des vorherigen Treffers getimed
+    // Black Spark: a normal pressed right as the previous hit's hitstop ends
     bool blackSpark = false;
     if (!h.projectile && !fromCompanion && mv.category == MoveCategory::Normal) {
         int window = s.stats[atk].blackSparkWindow + mods(m, s, atk).extraBlackSpark;
@@ -834,7 +825,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
 
     d.lastHitBy = static_cast<int8_t>(atk);
 
-    // Super Armor: Treffer wird geschluckt (Schaden ja, Stun nein)
+    // super armor takes the damage but not the stun
     if (d.state == FState::Attack && d.armorLeft > 0) {
         const MoveDef& dm = moveOf(s, di, d.moveId);
         if (d.moveFrame < dm.startup + dm.active) {
@@ -852,7 +843,7 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
     d.vel = h.dir * p.knockback + Vec3{Fx{}, p.launch, Fx{}};
     if (p.launch > Fx{}) { d.grounded = false; d.launched = true; }
     ++d.comboTaken;
-    leash(m, s, di); // getroffener Spieler -> seine Begleiter brechen ab
+    leash(m, s, di);  // leash: getting hit cancels your companions
     if (fromCompanion) a.bond = static_cast<int16_t>(a.bond < kBondMax ? a.bond + 1 : kBondMax);
     else a.linkFrame = m.frame + a.hitstop + 1;
     addRealmMeter(a, dmg / 2 * s.stats[atk].realmGainPct / 100 * mods(m, s, atk).realmGainPct / 100);
@@ -862,14 +853,13 @@ void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, 
 }
 
 bool hitsFighter(const MatchState& m, int target, Vec3 c, Fx r) {
-    // Hurtbox: einfache Kapsel aus 3 Kugeln (Beine, Torso, Kopf)
+    // legs, torso, head
     static const HitboxDef hurt[3] = {
         {{Fx{}, Fx::ratio(5, 10), Fx{}}, Fx::ratio(45, 100)},
         {{Fx{}, Fx::ratio(12, 10), Fx{}}, Fx::ratio(45, 100)},
         {{Fx{}, Fx::ratio(17, 10), Fx{}}, Fx::ratio(30, 100)},
     };
     const FighterState& f = m.f[target];
-    // Grober Vorab-Test, damit 20 Kämpfer billig bleiben
     if (abs(c.x - f.pos.x) > r + Fx::fromInt(1) || abs(c.z - f.pos.z) > r + Fx::fromInt(1)) return false;
     for (const HitboxDef& hu : hurt)
         if (overlap(c, r, f.pos + Vec3{Fx{}, hu.offset.y, Fx{}}, hu.radius)) return true;
@@ -877,7 +867,7 @@ bool hitsFighter(const MatchState& m, int target, Vec3 c, Fx r) {
 }
 
 int firstEnemyHit(const MatchState& m, const MatchSetup& s, int atk, Vec3 c, Fx r, bool grab) {
-    // Lock-on-Ziel zuerst, dann alle anderen Gegner
+    // lock-on target first
     const int t = m.f[atk].target;
     for (int k = -1; k < m.count; ++k) {
         const int j = k < 0 ? t : k;
@@ -897,7 +887,7 @@ void moveToward(Vec3& p, Vec3 target, Fx speed) {
 
 struct MeleeCheck {
     PendingHit hit;
-    bool active = false; // aktiver Hitbox-Frame
+    bool active = false;
     Vec3 center{};
     Fx radius{};
 };
@@ -914,7 +904,7 @@ MeleeCheck checkMelee(const MatchState& m, const MatchSetup& s, int atk) {
     out.active = true;
     for (const HitboxDef& hb : mv.hitboxes) {
         Vec3 off = hb.offset;
-        if (base) off.z = off.z * s.stats[atk].reach; // Range-Stat des Bodys
+        if (base) off.z = off.z * s.stats[atk].reach;
         Vec3 c = actx.localToWorld(off);
         out.center = c;
         out.radius = hb.radius;
@@ -964,7 +954,7 @@ void updateProjectiles(MatchState& m, const MatchSetup& s, Ev ev) {
 }
 
 void resolveClash(MatchState& m, const MatchSetup& s, int a, int b, Ev ev) {
-    // a = Verteidiger (hatte den Realm), b = Herausforderer. Gleichstand: Verteidiger hält.
+    // a had the realm, b challenged it. Ties go to a.
     FighterState& fa = m.f[a];
     FighterState& fb = m.f[b];
     const int winner = fb.realm.clashCount > fa.realm.clashCount ? b : a;
@@ -985,7 +975,7 @@ void tickRealms(MatchState& m, const MatchSetup& s, Ev ev) {
 
         if (r.clashTimer > 0) {
             const int other = r.clashWith;
-            if (other < o && m.f[other].realm.clashTimer > 0) continue; // Paar wird beim kleineren Index behandelt
+            if (other < o && m.f[other].realm.clashTimer > 0) continue;  // handled once, by the lower index
             --r.clashTimer;
             if (m.f[other].realm.clashTimer > 0) --m.f[other].realm.clashTimer;
             if (r.clashTimer == 0) {
@@ -998,8 +988,8 @@ void tickRealms(MatchState& m, const MatchSetup& s, Ev ev) {
 
         const int elapsed = kRealmFrames - r.timer;
         const RealmClass cls = realmClassOf(s, o);
-        const bool bond3 = bondLevel(of) >= 3; // Begleiter wirkt im Realm mit
-        realmHitsCompanions(m, s, o, cls, bondLevel(of), ev); // Begleiter sind NICHT realm-immun
+        const bool bond3 = bondLevel(of) >= 3;
+        realmHitsCompanions(m, s, o, cls, bondLevel(of), ev);
         for (int t = 0; t < m.count; ++t) {
             if (!realmAffects(m, s, o, t)) continue;
             FighterState& tf = m.f[t];
@@ -1024,7 +1014,6 @@ void tickRealms(MatchState& m, const MatchSetup& s, Ev ev) {
     }
 }
 
-// ---- Spawn, K.O., Respawn, Sieg
 Vec3 teamBase(const MatchSetup& s, int team) {
     // Up to four team bases on the cardinal directions
     const Fx r = mapOf(s).radius * Fx::ratio(7, 10);
@@ -1295,7 +1284,7 @@ void step(MatchState& m, const MatchSetup& s, const FrameInput inputs[], EventSi
         if (!m.f[i].out)
             if (const TechniqueLogic* l = logicOf(s, i)) l->onTick(TechContext{m, s, i, ev});
 
-    // Treffer aller Kämpfer erst sammeln, dann anwenden -> echte Trades
+    // collect first, then apply, so simultaneous hits trade
     MeleeCheck hits[kMaxFighters];
     for (int i = 0; i < n; ++i) if (!frozen[i]) hits[i] = checkMelee(m, s, i);
     for (int i = 0; i < n; ++i) {
@@ -1304,7 +1293,7 @@ void step(MatchState& m, const MatchSetup& s, const FrameInput inputs[], EventSi
             applyHit(m, s, i, hits[i].hit, ev);
         } else if (hits[i].active &&
                    meleeHitsCompanion(m, s, i, moveOf(s, i, m.f[i].moveId), hits[i].center, hits[i].radius, ev)) {
-            m.f[i].moveHasHit = true; // Begleiter getroffen statt Spieler
+            m.f[i].moveHasHit = true;
         }
     }
     for (int i = 0; i < n; ++i) if (!m.f[i].out) companionAttacks(m, s, i, ev);
@@ -1317,7 +1306,6 @@ void step(MatchState& m, const MatchSetup& s, const FrameInput inputs[], EventSi
     ++m.frame;
 }
 
-// ============================================================ Hash
 namespace {
 struct Hasher {
     uint64_t h = 14695981039346656037ull;

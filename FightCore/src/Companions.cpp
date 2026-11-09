@@ -1,5 +1,5 @@
-// Begleiter-Bibliothek: Summoner-Assists und Pakt-Begleiter. Eigenes IP.
-// Schaden hier = "Skill-Niveau"; die Engine skaliert Begleiter-Treffer auf 60 %.
+// Summoner assists and oath companions.
+// Damage is listed at skill level, the simulation scales companion hits down to 60%.
 #include "fightcore/Companion.h"
 
 namespace fc::companions {
@@ -79,7 +79,7 @@ const CompanionDef& oathSpirit() {
     static const CompanionDef d = [] {
         CompanionDef c = bladeWolf();
         c.name = "Oath Spirit";
-        c.maxHp = 180; c.upkeep = 0; c.cooldown = 150; // Geschenk des Pakts: kein Upkeep
+        c.maxHp = 180; c.upkeep = 0; c.cooldown = 150;  // no upkeep, it's a gift
         return c;
     }();
     return d;

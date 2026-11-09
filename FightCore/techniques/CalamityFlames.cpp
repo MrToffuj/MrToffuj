@@ -1,12 +1,8 @@
-// ============================================================================
-// GLUTKERN
-//  Core Rule : Hitze-Stacks – Technik-Treffer setzen Stacks (max 5), der Gegner brennt.
-//  Skills    : Glutfalter (Offense, Projektil), Magmasäule (Utility/Zone), Hitzemantel (Defense)
-//  MaxOutput      : Sternfall (Burst, Meteor von oben)
-//  Realm     : Schmelzkammer (Damage)
-//  Schwäche  : Braucht Setup, langes Startup.
-//  Welt      : Jeder Brand-Tick sendet Ignite-Events -> Holz in der Arena fängt Feuer.
-// ============================================================================
+// Calamity Flames
+// Core rule: technique hits stack heat (max 5) and the target burns. Burn ticks emit Ignite
+// events so wooden scenery catches fire too.
+// Skills: Ember Moths, Magma Pillar, Heat Mantle. Max Output: Falling Star. Realm: Iron Coffin.
+// Weakness: needs setup, long startups.
 #include "Techniques.h"
 
 #include "fightcore/Simulation.h"
@@ -29,10 +25,10 @@ public:
                 break;
             }
             case kMagmaPillar: {
-                // Säule bricht nach 20 Frames am aktuellen Gegner-Standort aus dem Boden
+                // erupts under the target after 20 frames
                 Vec3 p{op.pos.x, Fx::fromInt(1), op.pos.z};
                 c.spawnProjectile(p, {}, Fx::ratio(9, 10), 12, kMagmaPillar, 20);
-                c.emit(ImpactKind::TechniqueFx, p, {}, Fx{}, ImpactClass::Medium, 10); // Warn-Glühen
+                c.emit(ImpactKind::TechniqueFx, p, {}, Fx{}, ImpactClass::Medium, 10);
                 break;
             }
             case kHeatMantle:
@@ -53,7 +49,7 @@ public:
         if (me.tech[kMantleTimer] > 0) --me.tech[kMantleTimer];
         int32_t& stacks = me.tech[kHeatStacks];
         if (stacks <= 0) return;
-        // Brennen: 1 Schaden pro Stack alle 20 Frames
+        // 1 damage per stack every 20 frames
         const int victim = me.tech[kBurnTarget];
         if (c.m.f[victim].out) { stacks = 0; return; }
         if (c.m.frame % 20 == 0) {
@@ -64,9 +60,9 @@ public:
     }
 
     void onHitLanded(const TechContext& c, int16_t move, bool, int victim) const override {
-        if (move < 0) return; // nur Technik-Treffer
+        if (move < 0) return;
         int32_t& stacks = c.me().tech[kHeatStacks];
-        if (c.me().tech[kBurnTarget] != victim) stacks = 0; // ein Opfer brennt zur Zeit
+        if (c.me().tech[kBurnTarget] != victim) stacks = 0;  // only one victim burns at a time
         c.me().tech[kBurnTarget] = victim;
         stacks += move == kFallingStar ? 3 : 1;
         if (stacks > kMaxStacks) stacks = kMaxStacks;

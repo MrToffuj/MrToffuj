@@ -6,7 +6,7 @@
 namespace fc {
 namespace {
 
-// Wie sehr tut dieses Opfer DIESEM Build weh? 0..10
+// How much does this sacrifice hurt this particular build? 0..10
 int sensitivity(const OathChoice& c, const BodyDef& b, const TechniqueDef* t, const PlaystyleProfile& p) {
     const bool heavensBind = b.has(PassiveHeavensBind);
     switch (c.category) {
@@ -15,13 +15,13 @@ int sensitivity(const OathChoice& c, const BodyDef& b, const TechniqueDef* t, co
             if (c.detail == 1) return b.speed * 2;
             return p.blockRate / 10;
         case OathCategory::Resource:
-            if (heavensBind) return 0; // hat keine Essenz -> wertlos
+            if (heavensBind) return 0;  // has no CE to give
             if (c.detail == 0) return b.ce * 2;
             if (c.detail == 1) return b.ce * 2 + (b.has(PassiveFastRegen) ? 2 : 0);
             return p.healUsage / 10;
         case OathCategory::Technique:
             if (!t) return 0;
-            if (c.detail <= 2) return p.skillUsage[c.detail] / 10; // ungenutzter Skill = fast wertlos
+            if (c.detail <= 2) return p.skillUsage[c.detail] / 10;  // a skill you never use is worth nothing
             if (c.detail == 3) return p.realmUsage / 10;
             return p.maxOutputUsage / 10;
         case OathCategory::Rule:
@@ -33,7 +33,7 @@ int sensitivity(const OathChoice& c, const BodyDef& b, const TechniqueDef* t, co
         case OathCategory::Companion: {
             const bool assist = b.has(PassiveAssist);
             const bool techComps = t && !t->companions.empty();
-            if (!assist && !techComps) return 0; // hat keine Begleiter -> wertlos
+            if (!assist && !techComps) return 0;
             if (c.detail == 0) return assist ? 4 : 3;
             if (c.detail == 1) return assist ? 8 : 6;
             return assist ? 10 : 5;
@@ -58,7 +58,7 @@ OathResult evaluateOath(const OathChoice& c, const BodyDef& body, const Techniqu
     if (!c.active) return r;
     OathModifiers& m = r.mods;
 
-    // 1) Opfer anwenden (immer, egal wie es bewertet wird)
+    // The sacrifice always applies, whatever it turns out to be worth.
     const int16_t pct = restrictionPct(c.size);
     switch (c.category) {
         case OathCategory::Body:
@@ -90,13 +90,12 @@ OathResult evaluateOath(const OathChoice& c, const BodyDef& body, const Techniqu
             break;
     }
 
-    // 2) Versteckter Wert
     int value = static_cast<int>(c.size) * sensitivity(c, body, tech, p);
-    if (body.has(PassiveHeavensBind) && value > 12) value = 12; // begrenzter Pakt-Stack
+    if (body.has(PassiveHeavensBind) && value > 12) value = 12;  // Heaven's Bind already gave up its technique
     if (c.category == OathCategory::Time) value = value * 3 / 2;
     r.hiddenValue = static_cast<int16_t>(value);
 
-    // 3) Ergebnis-Stufe. Belohnung ist nie größer als das Opfer.
+    // The reward never outgrows the sacrifice.
     if (value < 4) r.tier = OathTier::TooCheap;
     else if (value < 12) r.tier = OathTier::Fair;
     else if (value < 24) r.tier = OathTier::High;
@@ -104,23 +103,23 @@ OathResult evaluateOath(const OathChoice& c, const BodyDef& body, const Techniqu
 
     const int bonus = value > 15 ? 15 : value;
     switch (r.tier) {
-        case OathTier::TooCheap: // Backlash: "Der Pakt war nicht genug."
+        case OathTier::TooCheap:  // "The oath wasn't enough."
             m.ceLeak = 3;
             m.cooldownPct = 125;
             break;
         case OathTier::Overpaid:
             m.damagePct = static_cast<int16_t>(m.damagePct + 5);
-            if (c.category == OathCategory::Companion) m.bonusCompanion = 2; // Wandler (adaptiv)
+            if (c.category == OathCategory::Companion) m.bonusCompanion = 2;  // The Adaptor
             [[fallthrough]];
         case OathTier::High:
             if (c.category == OathCategory::Companion) {
-                if (!m.bonusCompanion) m.bonusCompanion = 1; // temporärer Zusatz-Begleiter
+                if (!m.bonusCompanion) m.bonusCompanion = 1;  // Oath Spirit
             } else if (tech) {
                 m.openRealm = true;
             } else {
                 m.extraBlackSpark = 1;
             }
-            // Bodies ohne Begleiter bekommen einen nur über zeitlich begrenzte Pakte
+            // builds without companions only get one from a timed oath
             if (c.category == OathCategory::Time && !body.has(PassiveAssist) && !(tech && !tech->companions.empty()))
                 m.bonusCompanion = 1;
             [[fallthrough]];

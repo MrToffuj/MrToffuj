@@ -4,7 +4,6 @@ UFightGameSettings::UFightGameSettings()
 {
 	CategoryName = TEXT("Game");
 
-	// Controller: Face-Buttons nach POSITION (unten/links/oben/rechts), dadurch identisch auf allen Pads.
 	Gamepad.Light  = { EKeys::Gamepad_FaceButton_Left };
 	Gamepad.Heavy  = { EKeys::Gamepad_FaceButton_Top };
 	Gamepad.Grab   = { EKeys::Gamepad_FaceButton_Right };

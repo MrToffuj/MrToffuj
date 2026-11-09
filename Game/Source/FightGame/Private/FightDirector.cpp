@@ -49,12 +49,14 @@ namespace
 		}
 	}
 
-	void FillLoadout(fc::Loadout& Out, const FFightLoadout& In)
+	const fc::MapDef* MapOf(EFightMap M)
 	{
-		Out.body = BodyOf(In.Body);
-		Out.technique = In.Body == EFightBody::HeavensBind ? nullptr : TechniqueOf(In.Technique);
-		Out.assist = AssistOf(In.Assist);
-		Out.team = static_cast<uint8_t>(FMath::Clamp(In.Team, 0, 1));
+		switch (M)
+		{
+		case EFightMap::ShrineWard: return &fc::maps::shrineWard();
+		case EFightMap::HarborDistrict: return &fc::maps::harborDistrict();
+		default: return &fc::maps::oldCapital();
+		}
 	}
 
 	fc::GameMode ToMode(EFightMode M)
@@ -63,11 +65,36 @@ namespace
 		{
 		case EFightMode::Teams: return fc::GameMode::Teams;
 		case EFightMode::Brawl: return fc::GameMode::Brawl;
+		case EFightMode::Custom: return fc::GameMode::Custom;
 		default: return fc::GameMode::Duel;
 		}
 	}
 
-	const FLinearColor TeamColors[2] = { FLinearColor(0.95f, 0.35f, 0.15f), FLinearColor(0.15f, 0.45f, 0.95f) };
+	fc::ModeRules ToRules(const UFightGameSettings& S)
+	{
+		const fc::GameMode Mode = ToMode(S.Mode);
+		fc::ModeRules R = fc::rulesFor(Mode);
+		if (Mode != fc::GameMode::Custom) return R;
+
+		const FFightCustomRules& C = S.Custom;
+		R.fighters = static_cast<int8_t>(FMath::Clamp(C.Fighters, 2, fc::kMaxFighters));
+		R.teamCount = static_cast<uint8_t>(FMath::Clamp(C.Teams, 0, static_cast<int32>(R.fighters)));
+		R.objective = static_cast<fc::Objective>(C.Objective);
+		R.map = MapOf(C.Map);
+		R.friendlyFire = C.bFriendlyFire;
+		R.scoreLimit = static_cast<int16_t>(C.ScoreLimit);
+		R.timeLimitFrames = C.TimeLimitMinutes > 0 ? C.TimeLimitMinutes * 60 * 60 : -1;
+		R.respawnFrames = R.objective == fc::Objective::Elimination ? -1 : static_cast<int16_t>(FMath::Max(1, C.RespawnSeconds) * 60);
+		return R;
+	}
+
+	void FillLoadout(fc::Loadout& Out, const FFightLoadout& In)
+	{
+		Out.body = BodyOf(In.Body);
+		Out.technique = In.Body == EFightBody::HeavensBind ? nullptr : TechniqueOf(In.Technique);
+		Out.assist = AssistOf(In.Assist);
+		Out.team = static_cast<uint8_t>(FMath::Clamp(In.Team, 0, fc::kMaxTeams - 1));
+	}
 
 	FLinearColor CompanionColor(fc::CompanionType T)
 	{
@@ -85,6 +112,9 @@ namespace
 		const fc::Vec3 Right{ F.facing.z, fc::Fx{}, -F.facing.x };
 		return F.pos + Right * Off.x + fc::Vec3{ fc::Fx{}, Off.y, fc::Fx{} } + F.facing * Off.z;
 	}
+
+	constexpr int32 BarrierSegments = 72;
+	constexpr float BarrierHeightCm = 30000.f;
 }
 
 AFightDirector::AFightDirector()
@@ -112,26 +142,28 @@ void AFightDirector::BeginPlay()
 {
 	Super::BeginPlay();
 	BuildSession();
-	SpawnVisuals();
+	SpawnArena();
+	SpawnFighterVisuals();
 }
 
 void AFightDirector::BuildSession()
 {
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
 	const fc::GameMode Mode = ToMode(S->Mode);
-	LocalPlayers = FMath::Clamp(S->LocalPlayers, 1, FMath::Min<int32>(MaxLocalPlayers, fc::rulesFor(Mode).fighters));
+	const fc::ModeRules Rules = ToRules(*S);
+	LocalPlayers = FMath::Clamp(S->LocalPlayers, 1, FMath::Min<int32>(MaxLocalPlayers, Rules.fighters));
 
 	fc::Loadout Humans[MaxLocalPlayers];
 	for (int32 i = 0; i < LocalPlayers; ++i)
 		FillLoadout(Humans[i], S->Loadouts.IsValidIndex(i) ? S->Loadouts[i] : FFightLoadout());
 
-	const fc::MatchSetup Setup = fc::buildMatch(Mode, Humans, LocalPlayers, static_cast<uint8_t>(S->BotLevel),
+	const fc::MatchSetup Setup = fc::buildMatch(Mode, Rules, Humans, LocalPlayers, static_cast<uint8_t>(S->BotLevel),
 		static_cast<uint32_t>(FMath::Rand()));
 	Session = MakeUnique<fc::Session>(Setup);
 	bHasPrevious = false;
 	RoundOverFrames = 0;
 	Accumulator = 0.0;
-	UE_LOG(LogFight, Log, TEXT("Match: Modus %d, %d Kaempfer, %d lokal"), static_cast<int32>(Mode), Setup.count, LocalPlayers);
+	UE_LOG(LogFight, Log, TEXT("Match on %s: %d fighters, %d local"), UTF8_TO_TCHAR(fc::mapOf(Setup).name), Setup.count, LocalPlayers);
 }
 
 void AFightDirector::RestartMatch()
@@ -139,67 +171,102 @@ void AFightDirector::RestartMatch()
 	BuildSession();
 }
 
-void AFightDirector::SpawnVisuals()
+AFightShapeVisual* AFightDirector::SpawnShape(int32 Shape, const FLinearColor& Color, const FVector& SizeCm, const FVector& Offset)
 {
-	UWorld* World = GetWorld();
 	FActorSpawnParameters Params;
 	Params.Owner = this;
-	auto Spawn = [&](EFightShape Shape, const FLinearColor& Color, const FVector& SizeCm, const FVector& Offset)
-	{
-		AFightShapeVisual* V = World->SpawnActor<AFightShapeVisual>(AFightShapeVisual::StaticClass(), FTransform::Identity, Params);
-		V->SetShape(Shape);
-		V->SetColor(Color);
-		V->SetSizeCm(SizeCm);
-		V->SetMeshOffset(Offset);
-		return V;
-	};
+	AFightShapeVisual* V = GetWorld()->SpawnActor<AFightShapeVisual>(AFightShapeVisual::StaticClass(), FTransform::Identity, Params);
+	V->SetShape(static_cast<EFightShape>(Shape));
+	V->SetColor(Color);
+	V->SetSizeCm(SizeCm);
+	V->SetMeshOffset(Offset);
+	return V;
+}
 
+void AFightDirector::SpawnArena()
+{
+	const fc::MapDef& Map = fc::mapOf(GetSetup());
+	const float Radius = FightUnits::ToCm(Map.radius);
+
+	FloorVisual = SpawnShape(static_cast<int32>(EFightShape::Cylinder), FLinearColor(0.2f, 0.22f, 0.2f),
+		FVector(2.f * Radius + 400.f, 2.f * Radius + 400.f, 20.f), FVector::ZeroVector);
+	FloorVisual->SetActorLocation(FVector(0.f, 0.f, -10.f));
+
+	// The colony barrier: a black curtain all the way around and up into the sky.
+	// Placeholder geometry until the proper barrier material exists.
+	const float SegmentWidth = 2.f * UE_PI * Radius / BarrierSegments * 1.04f;
+	for (int32 k = 0; k < BarrierSegments; ++k)
+	{
+		const float Angle = 2.f * UE_PI * k / BarrierSegments;
+		AFightShapeVisual* Segment = SpawnShape(static_cast<int32>(EFightShape::Cube), FLinearColor::Black,
+			FVector(100.f, SegmentWidth, BarrierHeightCm), FVector(0.f, 0.f, BarrierHeightCm * 0.5f));
+		const FVector Dir(FMath::Cos(Angle), FMath::Sin(Angle), 0.f);
+		Segment->SetActorLocation(Dir * (Radius + 50.f));
+		Segment->SetActorRotation(Dir.Rotation());
+		BarrierVisuals.Add(Segment);
+	}
+
+	for (const fc::ObstacleDef& O : Map.obstacles)
+	{
+		const FVector Size(FightUnits::ToCm(O.halfZ) * 2.f, FightUnits::ToCm(O.halfX) * 2.f, FightUnits::ToCm(O.height));
+		AFightShapeVisual* V = SpawnShape(static_cast<int32>(EFightShape::Cube), FLinearColor(0.35f, 0.3f, 0.27f), Size,
+			FVector(0.f, 0.f, Size.Z * 0.5f));
+		V->SetActorLocation(FightUnits::ToWorld(O.center));
+		ObstacleVisuals.Add(V);
+	}
+
+	for (int32 t = 0; t < fc::kMaxFlags; ++t)
+	{
+		AFightShapeVisual* Flag = SpawnShape(static_cast<int32>(EFightShape::Cylinder), GetTeamColor(t), FVector(15.f, 15.f, 250.f),
+			FVector(0.f, 0.f, 125.f));
+		Flag->AddMarker(EFightShape::Cube, FVector(0.f, 40.f, 220.f), FVector(5.f, 70.f, 45.f), GetTeamColor(t));
+		Flag->SetVisible(false);
+		FlagVisuals.Add(Flag);
+	}
+	for (const fc::Vec3& Z : Map.zones)
+	{
+		AFightShapeVisual* Zone = SpawnShape(static_cast<int32>(EFightShape::Cylinder), FLinearColor(0.5f, 0.5f, 0.5f),
+			FVector(600.f, 600.f, 4.f), FVector::ZeroVector);
+		Zone->SetActorLocation(FightUnits::ToWorld(Z) + FVector(0.f, 0.f, 2.f));
+		Zone->SetVisible(false);
+		ZoneVisuals.Add(Zone);
+	}
+	BallVisual = SpawnShape(static_cast<int32>(EFightShape::Sphere), FLinearColor(1.f, 0.85f, 0.3f), FVector(60.f), FVector::ZeroVector);
+	BallVisual->SetVisible(false);
+
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	const float Fov = GetDefault<UFightGameSettings>()->CameraFOV;
+	for (int32 i = 0; i < LocalPlayers; ++i)
+	{
+		ACameraActor* Cam = GetWorld()->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform::Identity, Params);
+		Cam->GetCameraComponent()->SetFieldOfView(Fov);
+		Cam->GetCameraComponent()->SetConstraintAspectRatio(false);
+		Cameras.Add(Cam);
+	}
+}
+
+void AFightDirector::SpawnFighterVisuals()
+{
 	const int32 Count = GetSetup().count;
 	for (int32 i = 0; i < Count; ++i)
 	{
-		AFightShapeVisual* F = Spawn(EFightShape::Cylinder, GetFighterColor(i), FVector(90.f, 90.f, 180.f), FVector(0.f, 0.f, 90.f));
+		AFightShapeVisual* F = SpawnShape(static_cast<int32>(EFightShape::Cylinder), GetFighterColor(i), FVector(90.f, 90.f, 180.f),
+			FVector(0.f, 0.f, 90.f));
 		F->AddMarker(EFightShape::Cube, FVector(45.f, 0.f, 150.f), FVector(25.f), FLinearColor(0.05f, 0.05f, 0.05f));
 		FighterVisuals.Add(F);
 	}
 	for (int32 i = 0; i < Count * fc::kCompanionSlots; ++i)
 	{
-		AFightShapeVisual* C = Spawn(EFightShape::Sphere, FLinearColor::White, FVector(100.f), FVector::ZeroVector);
+		AFightShapeVisual* C = SpawnShape(static_cast<int32>(EFightShape::Sphere), FLinearColor::White, FVector(100.f), FVector::ZeroVector);
 		C->SetVisible(false);
 		CompanionVisuals.Add(C);
 	}
 	for (int32 i = 0; i < fc::kMaxProjectiles; ++i)
 	{
-		AFightShapeVisual* P = Spawn(EFightShape::Sphere, FLinearColor::White, FVector(50.f), FVector::ZeroVector);
+		AFightShapeVisual* P = SpawnShape(static_cast<int32>(EFightShape::Sphere), FLinearColor::White, FVector(50.f), FVector::ZeroVector);
 		P->SetVisible(false);
 		ProjectileVisuals.Add(P);
-	}
-
-	// Arena: Boden + 4 zerstörbare Wände (Reihenfolge wie fc::MatchState::walls: +X, -X, +Z, -Z der Simulation)
-	const float Half = FightUnits::ToCm(GetSetup().stage.halfExtent);
-	const FLinearColor WallColor(0.35f, 0.3f, 0.27f);
-	const FVector WallLocations[4] = {
-		FVector(0.f, Half + 25.f, 150.f), FVector(0.f, -Half - 25.f, 150.f),
-		FVector(Half + 25.f, 0.f, 150.f), FVector(-Half - 25.f, 0.f, 150.f) };
-	const FVector WallSizes[4] = {
-		FVector(2.f * Half, 50.f, 300.f), FVector(2.f * Half, 50.f, 300.f),
-		FVector(50.f, 2.f * Half, 300.f), FVector(50.f, 2.f * Half, 300.f) };
-	for (int32 i = 0; i < 4; ++i)
-	{
-		AFightShapeVisual* W = Spawn(EFightShape::Cube, WallColor, WallSizes[i], FVector::ZeroVector);
-		W->SetActorLocation(WallLocations[i]);
-		WallVisuals.Add(W);
-	}
-	FloorVisual = Spawn(EFightShape::Cube, FLinearColor(0.2f, 0.22f, 0.2f), FVector(4.f * Half + 400.f, 4.f * Half + 400.f, 20.f),
-		FVector::ZeroVector);
-	FloorVisual->SetActorLocation(FVector(0.f, 0.f, -10.f));
-
-	const float Fov = GetDefault<UFightGameSettings>()->CameraFOV;
-	for (int32 i = 0; i < LocalPlayers; ++i)
-	{
-		ACameraActor* Cam = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform::Identity, Params);
-		Cam->GetCameraComponent()->SetFieldOfView(Fov);
-		Cam->GetCameraComponent()->SetConstraintAspectRatio(false);
-		Cameras.Add(Cam);
 	}
 }
 
@@ -210,12 +277,12 @@ void AFightDirector::Tick(float DeltaSeconds)
 
 	const UFightGameSettings* S = GetDefault<UFightGameSettings>();
 	APlayerController* PC0 = UGameplayStatics::GetPlayerController(this, 0);
+	static const FFightBindings NoKeys;
 	for (int32 i = 0; i < LocalPlayers; ++i)
 	{
 		APlayerController* PC = UGameplayStatics::GetPlayerController(this, i);
 		if (PC && Cameras.IsValidIndex(i) && PC->GetViewTarget() != Cameras[i]) PC->SetViewTarget(Cameras[i]);
-		// Tastatur kommt immer am Spieler-0-Controller an; nur P1/P2 haben ein Tastatur-Layout
-		static const FFightBindings NoKeys;
+		// Keyboard events always arrive on the first controller, only P1 and P2 have a keyboard layout
 		const FFightBindings& Keys = i == 0 ? S->KeyboardP1 : (i == 1 ? S->KeyboardP2 : NoKeys);
 		Samplers[i].Sample(PC, PC0, S->Gamepad, Keys);
 	}
@@ -259,13 +326,18 @@ FString AFightDirector::GetFighterLabel(int32 Fighter) const
 	return GetSetup().loadout[Fighter].bot ? FString::Printf(TEXT("BOT %d"), Fighter + 1) : FString::Printf(TEXT("P%d"), Fighter + 1);
 }
 
+FLinearColor AFightDirector::GetTeamColor(int32 Team) const
+{
+	static const FLinearColor Fixed[4] = {
+		FLinearColor(0.95f, 0.35f, 0.15f), FLinearColor(0.15f, 0.45f, 0.95f),
+		FLinearColor(0.3f, 0.85f, 0.3f), FLinearColor(0.9f, 0.8f, 0.15f) };
+	if (Team < 4) return Fixed[Team];
+	return FLinearColor::MakeFromHSV8(static_cast<uint8>((Team * 47) % 256), 200, 230);
+}
+
 FLinearColor AFightDirector::GetFighterColor(int32 Fighter) const
 {
-	const fc::MatchSetup& Setup = GetSetup();
-	if (Setup.mode == fc::GameMode::Teams) return TeamColors[Setup.loadout[Fighter].team & 1];
-	if (Setup.mode == fc::GameMode::Duel) return TeamColors[Fighter & 1];
-	// Brawl: jeder eine eigene Farbe
-	return FLinearColor::MakeFromHSV8(static_cast<uint8>(Fighter * 255 / FMath::Max(1, static_cast<int32>(Setup.count))), 200, 230);
+	return GetTeamColor(GetSetup().loadout[Fighter].team);
 }
 
 void AFightDirector::HandleEvent(const fc::ImpactEvent& E)
@@ -273,7 +345,7 @@ void AFightDirector::HandleEvent(const fc::ImpactEvent& E)
 	const FFightImpact Impact = FightUnits::ToImpact(E);
 	OnImpact.Broadcast(Impact);
 
-	// Kamera-Feedback nur, wenn es nah an einem lokalen Spieler passiert (Brawl: 20 Leute auf der Map)
+	// Only shake the camera for things that happen close to a local player
 	bool bNearLocal = false;
 	for (int32 i = 0; i < LocalPlayers && !bNearLocal; ++i)
 		bNearLocal = FVector::DistSquared(Impact.Location, FightUnits::ToWorld(GetState().f[i].pos)) < FMath::Square(1500.f);
@@ -283,12 +355,12 @@ void AFightDirector::HandleEvent(const fc::ImpactEvent& E)
 	float Shake = 0.f;
 	switch (E.kind)
 	{
-	case K::Hit: case K::GroundSlam: case K::WallSplat: case K::Block:
+	case K::Hit: case K::GroundSlam: case K::WallSplat: case K::Block: case K::BarrierHit:
 		Shake = 2.f + 3.f * Impact.Strength;
 		break;
 	case K::WallBreak: case K::BlackSpark: case K::RealmOpen: case K::RealmClash:
 		Shake = 14.f;
-		ImpactFlash = 1.f; // Impact-Frame (später: invertiertes Tusche-Bild)
+		ImpactFlash = 1.f;
 		break;
 	default:
 		break;
@@ -299,7 +371,6 @@ void AFightDirector::HandleEvent(const fc::ImpactEvent& E)
 		ShakeStrength = Shake;
 		ShakeTime = Shake > 0.f ? 0.08f + Shake * 0.012f : 0.f;
 	}
-	UE_LOG(LogFight, Verbose, TEXT("Frame %d Event %d von P%d"), E.frame, static_cast<int32>(E.kind), E.source + 1);
 }
 
 void AFightDirector::Present(float Alpha, float DeltaSeconds)
@@ -324,7 +395,7 @@ void AFightDirector::Present(float Alpha, float DeltaSeconds)
 		}
 		if (Cur.out) continue;
 
-		// Nach Respawn nicht von der alten Position herüberinterpolieren
+		// don't slide over from the old spot after a respawn
 		const fc::FighterState& Prev = bHasPrevious && !Previous.f[i].out ? Previous.f[i] : Cur;
 		V->SetActorLocation(FMath::Lerp(FightUnits::ToWorld(Prev.pos), FightUnits::ToWorld(Cur.pos), Alpha));
 		V->SetActorRotation(FightUnits::ToWorldDir(Cur.facing).Rotation());
@@ -355,10 +426,11 @@ void AFightDirector::Present(float Alpha, float DeltaSeconds)
 		PV->SetActorLocation(FightUnits::ToWorld(P.pos));
 		PV->SetSizeCm(FVector(FightUnits::ToCm(P.radius) * 2.f));
 		const FLinearColor Base = P.source > 0 ? FLinearColor(0.9f, 0.9f, 0.9f) : GetFighterColor(P.owner);
-		PV->SetColor(P.armDelay > 0 ? Base * 0.3f : Base); // Warnung bevor es aktiv wird
+		PV->SetColor(P.armDelay > 0 ? Base * 0.3f : Base); // dim while telegraphing
 	}
 
-	for (int32 i = 0; i < 4; ++i) WallVisuals[i]->SetVisible(!State.walls[i].broken);
+	for (int32 k = 0; k < ObstacleVisuals.Num(); ++k) ObstacleVisuals[k]->SetVisible(!State.obstacles[k].broken);
+	PresentObjective();
 
 	ImpactFlash = FMath::Max(0.f, ImpactFlash - DeltaSeconds * 8.f);
 	UpdateCameras(DeltaSeconds);
@@ -366,6 +438,35 @@ void AFightDirector::Present(float Alpha, float DeltaSeconds)
 #if !UE_BUILD_SHIPPING
 	if (GetDefault<UFightGameSettings>()->bDrawHitboxes) DrawHitboxes();
 #endif
+}
+
+void AFightDirector::PresentObjective()
+{
+	const fc::MatchState& State = Session->state();
+	const fc::MatchSetup& Setup = Session->setup();
+	const fc::Objective Objective = Setup.rules.objective;
+
+	const int32 Flags = Objective == fc::Objective::CaptureTheFlag ? FMath::Min<int32>(Setup.rules.teamCount, fc::kMaxFlags) : 0;
+	for (int32 t = 0; t < FlagVisuals.Num(); ++t)
+	{
+		FlagVisuals[t]->SetVisible(t < Flags);
+		if (t < Flags) FlagVisuals[t]->SetActorLocation(FightUnits::ToWorld(State.objective.flags[t].pos));
+	}
+
+	const bool bZones = Objective == fc::Objective::Checkpoints;
+	for (int32 z = 0; z < ZoneVisuals.Num(); ++z)
+	{
+		ZoneVisuals[z]->SetVisible(bZones && z < fc::kMaxZones);
+		if (!bZones || z >= fc::kMaxZones) continue;
+		const fc::ZoneState& Zone = State.objective.zones[z];
+		FLinearColor Color = Zone.owner >= 0 ? GetTeamColor(Zone.owner) : FLinearColor(0.5f, 0.5f, 0.5f);
+		if (Zone.capturing >= 0) Color = FMath::Lerp(Color, GetTeamColor(Zone.capturing), Zone.progress / 240.f);
+		ZoneVisuals[z]->SetColor(Color);
+	}
+
+	const bool bBall = Objective == fc::Objective::Oddball;
+	BallVisual->SetVisible(bBall);
+	if (bBall) BallVisual->SetActorLocation(FightUnits::ToWorld(State.objective.ballPos) + FVector(0.f, 0.f, 30.f));
 }
 
 void AFightDirector::UpdateCameras(float DeltaSeconds)
@@ -385,24 +486,24 @@ void AFightDirector::UpdateCameras(float DeltaSeconds)
 		const FVector Self = FighterVisuals[i]->GetActorLocation();
 		const FVector Opponent = Target >= 0 ? FighterVisuals[Target]->GetActorLocation() : Self + Cam.Forward * 500.f;
 
-		// Lock-on: Kamera steht hinter dem eigenen Kämpfer und blickt Richtung Gegner
+		// Sit behind our own fighter and look toward the lock-on target
 		FVector ToOpponent = Opponent - Self;
 		ToOpponent.Z = 0.f;
 		const float Distance = ToOpponent.Size();
 		if (Distance > 1.f)
 		{
-			const FVector Wanted = ToOpponent / Distance;
+			const FVector WantedForward = ToOpponent / Distance;
 			const float Blend = Cam.bInitialized ? FMath::Min(1.f, DeltaSeconds * S->CameraFollowSpeed * 0.8f) : 1.f;
-			Cam.Forward = (Cam.Forward + (Wanted - Cam.Forward) * Blend).GetSafeNormal2D();
+			Cam.Forward = (Cam.Forward + (WantedForward - Cam.Forward) * Blend).GetSafeNormal2D();
 		}
 		const FVector Right = FVector::CrossProduct(FVector::UpVector, Cam.Forward);
 
-		// Ganz nah am Gegner etwas zurückziehen, damit beide im Bild bleiben
+		// back off a little when we're right on top of each other
 		const float Back = S->CameraDistance + FMath::Max(0.f, 300.f - Distance) * 0.5f;
-		const FVector Target = Self - Cam.Forward * Back + Right * S->CameraShoulderOffset + FVector(0.f, 0.f, S->CameraHeight);
+		const FVector WantedLocation = Self - Cam.Forward * Back + Right * S->CameraShoulderOffset + FVector(0.f, 0.f, S->CameraHeight);
 		const FVector LookAt = Self + Cam.Forward * FMath::Clamp(Distance * 0.6f, 200.f, 900.f) + FVector(0.f, 0.f, 110.f);
 
-		Cam.Location = Cam.bInitialized ? FMath::VInterpTo(Cam.Location, Target, DeltaSeconds, S->CameraFollowSpeed) : Target;
+		Cam.Location = Cam.bInitialized ? FMath::VInterpTo(Cam.Location, WantedLocation, DeltaSeconds, S->CameraFollowSpeed) : WantedLocation;
 		Cam.bInitialized = true;
 
 		Cameras[i]->SetActorLocation(Cam.Location + ShakeOffset);

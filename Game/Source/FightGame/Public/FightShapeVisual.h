@@ -13,7 +13,7 @@ class UStaticMesh;
 UENUM()
 enum class EFightShape : uint8 { Cube, Sphere, Cylinder };
 
-// Platzhalter-Optik (Engine-Grundformen), bis echte Modelle/Anime-Shader da sind.
+// Stand-in visuals made from the engine's basic shapes until real models and the toon shader exist.
 UCLASS()
 class FIGHTGAME_API AFightShapeVisual : public AActor
 {
@@ -24,13 +24,11 @@ public:
 
 	void SetShape(EFightShape Shape);
 	void SetColor(const FLinearColor& Color);
-	// Größe in cm (Grundformen sind 100 cm groß)
+	// size in cm, the engine's basic shapes are 100 cm
 	void SetSizeCm(const FVector& Size);
 	void SetVisible(bool bVisible);
-	// Mesh relativ zum Actor-Ursprung verschieben (z. B. Zylinder auf den Boden stellen)
 	void SetMeshOffset(const FVector& OffsetCm);
 
-	// Zusatz-Mesh (z. B. "Nase" für die Blickrichtung)
 	UStaticMeshComponent* AddMarker(EFightShape Shape, const FVector& RelativeLocation, const FVector& SizeCm,
 		const FLinearColor& Color);
 
@@ -45,7 +43,7 @@ private:
 	UPROPERTY() TObjectPtr<UStaticMesh> CylinderMesh;
 	UPROPERTY() TObjectPtr<UMaterialInterface> BaseMaterial;
 
-	// Nur bei Änderung an die GPU schicken
+	// only push changes to the GPU
 	FLinearColor CurrentColor = FLinearColor::Transparent;
 	FVector CurrentSize = FVector::ZeroVector;
 };

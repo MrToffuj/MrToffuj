@@ -31,15 +31,17 @@ Kampfsystem testen können, bevor Modelle und Anime-Shader kommen.
 | Assist | R3 | F | Num8 |
 | Ziel wechseln | L3 | Tab | Num9 |
 
-Combos aus der GDD (Mod + Light = Skill 1, Guard + Grab = Essenz-Burst usw.) gelten genauso.
+Combos aus der GDD (Mod + Light = Skill 1, Guard + Grab = CE-Burst usw.) gelten genauso.
 
 **Kamera:** sitzt hinter dem eigenen Kämpfer mit Lock-on auf den Gegner. Stick **hoch = auf den Gegner zu**,
 runter = zurück, links/rechts = um den Gegner herum. Zurück + Heavy = Launcher.
 Lokale Mitspieler (bis 4) spielen im Splitscreen, jeder sieht hinter seinem Kämpfer.
 
-**Modi:** 1v1, 2v2 und Brawl (bis 20). Freie Slots werden mit Bots gefüllt.
-Einstellbar unter Projekt-Einstellungen → Fight Game → Match: Modus, Anzahl lokaler Spieler,
-Loadout (+ Team) pro Spieler, Bot-Stufe.
+**Modi:** 1v1, 2v2, Brawl (offen, bis 20) und Custom (Teams, Ziel, Map frei wählbar). Freie Slots werden
+mit Bots gefüllt. Einstellbar unter Projekt-Einstellungen → Fight Game → Match: Modus, Custom-Regeln,
+Anzahl lokaler Spieler, Loadout (+ Team) pro Spieler, Bot-Stufe.
+
+**Maps:** runde Kolonien mit schwarzer Barriere (Platzhalter-Optik), siehe [docs/MAPS.md](../docs/MAPS.md).
 Kamera-Abstand, Höhe, Schulter-Versatz und FOV: Projekt-Einstellungen → Fight Game → Camera.
 
 Belegung, Loadouts (Body / Technik / Assist pro Spieler), Stick-Deadzone und Debug-Anzeigen:
@@ -66,4 +68,4 @@ Belegung, Loadouts (Body / Technik / Assist pro Spieler), Stick-Deadzone und Deb
 - `OnImpact` → Niagara-Staub, Chaos-Zerstörung der Wände, Krater-Decals
 - Stepped Animation (Posen auf 2s/3s) über die Sim-Frames
 - UMG-HUD im Anime-Stil, Button-Glyphen je Gerät
-- Online: siehe [docs/NETWORKING.md](../docs/NETWORKING.md) (Rollback + Bots fertig, Transport fehlt)
+- Online P2P: siehe [docs/NETWORKING.md](../docs/NETWORKING.md) (Rollback + Bots fertig, Transport fehlt)

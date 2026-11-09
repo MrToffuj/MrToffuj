@@ -1,6 +1,6 @@
 #pragma once
-// Events = Brücke von der deterministischen Simulation zur Präsentation
-// (Zerstörung, Krater, Staub, Feuer, Impact-Frames, Kamera). Kosmetik läuft NICHT im Rollback.
+// Everything the presentation layer reacts to (VFX, destruction, sound, camera).
+// Cosmetics never feed back into the simulation.
 #include <cstdint>
 #include <vector>
 
@@ -30,7 +30,6 @@ struct ImpactEvent {
     Fx force{};
 };
 
-// Präsentation dedupliziert über (frame, kind, source, tag), da Rollback Frames neu simuliert.
 using EventSink = std::vector<ImpactEvent>;
 
 } // namespace fc

@@ -11,19 +11,43 @@ enum class EFightMode : uint8
 {
 	Duel UMETA(DisplayName = "1v1"),
 	Teams UMETA(DisplayName = "2v2"),
-	Brawl UMETA(DisplayName = "Brawl (bis 20)")
+	Brawl UMETA(DisplayName = "Brawl"),
+	Custom UMETA(DisplayName = "Custom")
+};
+
+UENUM(BlueprintType)
+enum class EFightObjective : uint8
+{
+	None UMETA(DisplayName = "Free fight"),
+	Elimination,
+	Deathmatch,
+	CaptureTheFlag UMETA(DisplayName = "Capture the Flag"),
+	Oddball,
+	Checkpoints
+};
+
+UENUM(BlueprintType)
+enum class EFightMap : uint8
+{
+	ShrineWard UMETA(DisplayName = "Shrine Ward (small)"),
+	HarborDistrict UMETA(DisplayName = "Harbor District (medium)"),
+	OldCapital UMETA(DisplayName = "Old Capital (large)")
 };
 
 UENUM(BlueprintType)
 enum class EFightBody : uint8
 {
-	Heavy, Speedster, Caster, Brawler, Technician, Summoner, HeavensBind
+	Heavy, Speedster, Caster, Brawler, Technician, Summoner,
+	HeavensBind UMETA(DisplayName = "Heaven's Bind")
 };
 
 UENUM(BlueprintType)
 enum class EFightTechnique : uint8
 {
-	None, Boundless, CalamityFlames, ShadowPuppets
+	None,
+	Boundless,
+	CalamityFlames UMETA(DisplayName = "Calamity Flames"),
+	ShadowPuppets UMETA(DisplayName = "Shadow Puppets")
 };
 
 UENUM(BlueprintType)
@@ -32,7 +56,7 @@ enum class EFightAssist : uint8
 	BladeWolf, SparkOwl, VineToad, StoneWarden
 };
 
-// Spiegel von fc::ImpactKind – Reihenfolge MUSS identisch sein (static_assert in FightTypes.cpp).
+// Mirrors fc::ImpactKind, keep the order in sync.
 UENUM(BlueprintType)
 enum class EFightImpactKind : uint8
 {
@@ -42,10 +66,10 @@ enum class EFightImpactKind : uint8
 	RealmOpen, RealmClash, RealmEnd,
 	Ignite, Burnout,
 	CompanionSummon, CompanionCall, CompanionDown, CompanionRevive, CompanionGone,
-	KO, Respawn
+	KO, Respawn,
+	BarrierHit, FlagTaken, FlagDropped, FlagReturned, FlagCaptured, BallTaken, BallDropped, ZoneCaptured
 };
 
-// Ein Event aus der Simulation für die Präsentation (Zerstörung, VFX, Sound, Kamera).
 USTRUCT(BlueprintType)
 struct FFightImpact
 {
@@ -54,7 +78,7 @@ struct FFightImpact
 	UPROPERTY(BlueprintReadOnly, Category = "Fight") int32 Frame = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Fight") EFightImpactKind Kind = EFightImpactKind::Hit;
 	UPROPERTY(BlueprintReadOnly, Category = "Fight") int32 Source = 0;
-	// 0 Light, 1 Medium, 2 Heavy, 3 Crushing
+	// 0 light .. 3 crushing
 	UPROPERTY(BlueprintReadOnly, Category = "Fight") int32 Strength = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Fight") int32 Tag = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Fight") FVector Location = FVector::ZeroVector;
@@ -62,8 +86,7 @@ struct FFightImpact
 	UPROPERTY(BlueprintReadOnly, Category = "Fight") float Force = 0.f;
 };
 
-// Umrechnung Simulation -> Unreal.
-// Simulation: Meter, X rechts / Y oben / Z vorne.  Unreal: Zentimeter, X vorne / Y rechts / Z oben.
+// Simulation units are meters with x right / y up / z forward; Unreal is centimeters with x forward / y right / z up.
 namespace FightUnits
 {
 	constexpr float CmPerUnit = 100.f;

@@ -4,20 +4,20 @@
 
 namespace fc {
 
-// Gleiche Steuerung für ALLE Builds (GDD-Pillar 1).
-//  Face:      Light, Heavy, Grab, Jump
-//  Schultern: Guard (R1), Mod (L1), Dash (R2), Ult (L2)
+// Same controls for every build.
+// Face buttons: Light, Heavy, Grab, Jump
+// Shoulders:    Guard (R1), Mod (L1), Dash (R2), Ult (L2)
 //
-//  Mod + Light/Heavy/Grab  -> Skill 1/2/3 (Offense / Utility / Defense-Movement)
-//  Ult                     -> MaxOutput-Technik (Maximum)
-//  Mod + Ult               -> Realm öffnen (100 % Realm-Meter)
-//  Ult während gegn. Realm -> Schutzkreis (halten)
-//  Guard + Grab            -> Essenz-Burst (Notfall-Pushback, auch aus Hitstun)
-//  Guard + Dash            -> Dodge
-//  Mod + Guard (halten)    -> Rückfluss (Heilung, steht still)
-//  Mod + Dash              -> Verstärkung an/aus
-//  Assist (R3)             -> Begleiter rufen: neutral Angriff, vor Druck, seitlich Anti-Air, zurück Schutz
-//  Target (L3)             -> Lock-on auf den nächsten Gegner wechseln (2v2 / Brawl)
+// Mod + Light/Heavy/Grab  skill 1/2/3
+// Ult                     Max Output
+// Mod + Ult               Realm Expansion (full meter)
+// Ult in an enemy realm   Simple Realm (hold)
+// Guard + Grab            CE burst, works in hitstun
+// Guard + Dash            dodge
+// Mod + Guard (hold)      Reverse Flow
+// Mod + Dash              toggle reinforcement
+// Assist (R3)             call a companion
+// Target (L3)             cycle lock-on
 enum Button : uint16_t {
     BtnLight = 1 << 0,
     BtnHeavy = 1 << 1,
@@ -31,10 +31,10 @@ enum Button : uint16_t {
     BtnTarget = 1 << 9,
 };
 
-// Richtung im Numpad-Format, so wie der Stick aus der Kamera HINTER dem Kämpfer aussieht:
-//   7 8 9      8 = auf den Gegner zu, 2 = zurück
-//   4 5 6      4 / 6 = seitlich (um den Gegner herum)
-//   1 2 3      5 = neutral
+// Numpad notation as seen from the camera behind the fighter:
+// 7 8 9   8 = toward the target, 2 = away
+// 4 5 6   4/6 = circle around it
+// 1 2 3
 struct FrameInput {
     uint8_t dir = 5;
     uint16_t buttons = 0;
@@ -54,7 +54,7 @@ public:
     const FrameInput& current() const { return ago(0); }
     bool held(uint16_t btn) const { return (current().buttons & btn) != 0; }
 
-    // Alter (in Frames) des jüngsten unverbrauchten Drucks von btn, oder -1.
+    // Frames since the newest unconsumed press of btn, or -1.
     int pressAge(uint16_t btn, int window) const {
         for (int i = 0; i < window && i < kSize - 1; ++i) {
             const FrameInput& now = ago(i);

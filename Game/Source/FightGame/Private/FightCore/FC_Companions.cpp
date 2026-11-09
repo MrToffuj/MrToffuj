@@ -1,4 +1,4 @@
-// Bindet FightCore/src/Companions.cpp in den Unreal-Build ein. Nicht bearbeiten – Quelle ist /FightCore.
+// Pulls FightCore/src/Companions.cpp into the Unreal build. Edit the original, not this.
 #include "CoreMinimal.h"
 
 THIRD_PARTY_INCLUDES_START

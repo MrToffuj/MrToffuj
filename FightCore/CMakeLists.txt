@@ -4,7 +4,7 @@ project(FightCore CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Reines C++ ohne Engine-Abhängigkeit. Unreal bindet dieses Modul später ein.
+# Plain C++, no engine dependency. The Unreal module compiles these same sources.
 add_library(fightcore
     src/Simulation.cpp
     src/Body.cpp

@@ -7,8 +7,8 @@ public class FightGame : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// FightCore (/FightCore im Repo) ist reines C++ und wird über Private/FightCore/*.cpp mitkompiliert.
-		// Die Dateien nutzen pro Datei gleiche Namen in anonymen Namespaces -> kein Unity-Build.
+		// FightCore lives in /FightCore and gets compiled in through Private/FightCore/*.cpp.
+		// The sources reuse helper names in anonymous namespaces, so no unity build.
 		bUseUnity = false;
 
 		string FightCoreRoot = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..", "..", "FightCore"));

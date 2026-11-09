@@ -7,10 +7,8 @@
 
 class AFightDirector;
 
-// Platzhalter-HUD (Canvas), eins pro Spieler-Viewport: eigene Werte links, Lock-on-Ziel rechts,
-// im Brawl zusätzlich Timer + K.O.-Rangliste.
-// Skaliert mit der Viewport-Höhe -> auch im Splitscreen und auf 7"-Handhelds lesbar.
-// Wird später durch UMG im Anime-Stil ersetzt.
+// Placeholder canvas HUD, one per local viewport: you on the left, your lock-on target on the right,
+// plus scores for the mode. Scales with the viewport so it stays readable in splitscreen and on handhelds.
 UCLASS()
 class FIGHTGAME_API AFightHUD : public AHUD
 {
@@ -24,7 +22,8 @@ private:
 	void DrawLabel(const FString& Text, float X, float Y, const FLinearColor& Color, float Scale, bool bAlignRight = false);
 	void DrawCentered(const FString& Text, float Y, const FLinearColor& Color, float Scale, bool bLarge);
 	void DrawFighterPanel(int32 Fighter, bool bRight, bool bDetailed);
-	void DrawScoreboard();
+	void DrawKoBoard();
+	void DrawObjective(int32 Self);
 
 	TWeakObjectPtr<AFightDirector> Director;
 	float UiScale = 1.f;

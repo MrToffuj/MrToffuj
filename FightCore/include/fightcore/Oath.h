@@ -1,6 +1,6 @@
 #pragma once
-// Pakte (Schwur-System): verstecktes Layer. Spieler wählt Kategorie + Größe,
-// das Spiel bewertet unsichtbar und gibt Belohnung oder Backlash.
+// Binding Oaths. The player picks what to give up and how much; the game decides
+// what it's worth for their build and hands out a reward or a backlash. Nothing is shown.
 #include <cstdint>
 
 namespace fc {
@@ -12,13 +12,13 @@ enum class OathCategory : uint8_t { Body, Resource, Technique, Rule, Time, Compa
 enum class OathSize : uint8_t { Small = 1, Medium = 2, Large = 4 };
 enum class OathTier : uint8_t { None, TooCheap, Fair, High, Overpaid };
 
-// detail je Kategorie:
-//  Body:      0 Max-HP, 1 Speed, 2 Block-Stärke
-//  Resource:  0 Essenz-Pool, 1 Essenz-Regen, 2 Rückfluss-Heilung
-//  Technique: 0..2 Skill sperren, 3 Realm verbieten, 4 MaxOutput verbieten
-//  Rule:      0 "nie blocken", 1 "nur Nahkampf" (alle Skills gesperrt)
-//  Time:      Pakt gilt nur 60 s, dafür stärker (detail ignoriert)
-//  Companion: 0 Begleiter-HP, 1 Begleiter-Slot sperren, 2 Begleiter dauerhaft verlieren
+// detail per category:
+// Body:      0 max HP, 1 speed, 2 block strength
+// Resource:  0 CE pool, 1 CE regen, 2 Reverse Flow healing
+// Technique: 0..2 lock a skill, 3 no realm, 4 no Max Output
+// Rule:      0 never block, 1 melee only (all skills locked)
+// Time:      only lasts 60 s but counts for more
+// Companion: 0 companion HP, 1 lock a slot, 2 lose a companion for good
 struct OathChoice {
     bool active = false;
     OathCategory category = OathCategory::Body;
@@ -26,7 +26,7 @@ struct OathChoice {
     uint8_t detail = 0;
 };
 
-// Playstyle-Daten der letzten Matches (0..100). Muss vor dem Match zwischen Clients ausgetauscht werden.
+// Usage stats from recent matches (0..100). Peers exchange these before the match.
 struct PlaystyleProfile {
     uint8_t skillUsage[3] = {33, 33, 33};
     uint8_t blockRate = 50;
@@ -36,27 +36,27 @@ struct PlaystyleProfile {
 };
 
 struct OathModifiers {
-    // Restriktionen (Opfer)
+    // what was given up
     int16_t maxHealthPct = 100, speedPct = 100, blockPct = 100;
     int16_t cePoolPct = 100, ceRegenPct = 100, healPct = 100;
-    uint8_t lockedSkills = 0; // Bitmaske
+    uint8_t lockedSkills = 0;  // bitmask
     bool noRealm = false, noMaxOutput = false, noBlock = false;
     int16_t companionHpPct = 100;
     uint8_t lockedCompanionSlots = 0;
     bool companionLost = false;
-    // Belohnungen / Backlash
+    // rewards / backlash
     int16_t damagePct = 100, realmGainPct = 100, cooldownPct = 100;
-    int32_t ceLeak = 0;           // pro Frame, 1/100 Essenz
-    int16_t extraBlackSpark = 0;   // zusätzliche Nullfunke-Frames
-    bool openRealm = false;       // Realm ohne Barriere
+    int32_t ceLeak = 0;  // per frame, 1/100 CE
+    int16_t extraBlackSpark = 0;
+    bool openRealm = false;
     bool maxOutputNoStartup = false;
-    uint8_t bonusCompanion = 0;   // 0 keiner, 1 Paktgeist, 2 Wandler (adaptiv)
-    int32_t durationFrames = -1;  // -1 = ganzes Match
+    uint8_t bonusCompanion = 0;  // 0 none, 1 Oath Spirit, 2 The Adaptor
+    int32_t durationFrames = -1;  // -1 = whole match
 };
 
 struct OathResult {
     OathTier tier = OathTier::None;
-    int16_t hiddenValue = 0; // nur intern / Debug
+    int16_t hiddenValue = 0;  // debug only
     OathModifiers mods;
 };
 

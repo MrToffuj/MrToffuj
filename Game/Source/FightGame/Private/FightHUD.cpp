@@ -42,7 +42,7 @@ void AFightHUD::DrawFighterPanel(int32 Fighter, bool bRight, bool bDetailed)
 	const float TextX = bRight ? W - Margin : Margin;
 
 	const FString Name = FString::Printf(TEXT("%s  %s / %s"), *Director->GetFighterLabel(Fighter), UTF8_TO_TCHAR(L.body->name),
-		L.technique ? UTF8_TO_TCHAR(L.technique->name) : TEXT("Nullgeboren"));
+		L.technique ? UTF8_TO_TCHAR(L.technique->name) : TEXT("Heaven's Bind"));
 	DrawLabel(Name, TextX, Margin - 4.f * S, Director->GetFighterColor(Fighter), 1.1f, bRight);
 
 	float Y = Margin + 30.f * S;
@@ -63,9 +63,9 @@ void AFightHUD::DrawFighterPanel(int32 Fighter, bool bRight, bool bDetailed)
 
 	FString Status;
 	if (F.burnout > 0) Status += TEXT("BURNOUT  ");
-	if (bRealmReady) Status += TEXT("REALM BEREIT  ");
-	if (F.reinforce) Status += TEXT("VERSTAERKT  ");
-	if (!F.maxOutputUsed && L.technique) Status += TEXT("APEX  ");
+	if (bRealmReady) Status += TEXT("REALM READY  ");
+	if (F.reinforce) Status += TEXT("REINFORCED  ");
+	if (!F.maxOutputUsed && L.technique) Status += TEXT("MAX OUTPUT  ");
 	Status += FString::Printf(TEXT("Bond %d"), fc::bondLevel(F));
 	DrawLabel(Status, TextX, Y, FLinearColor(1.f, 1.f, 0.8f), 0.8f, bRight);
 	Y += 24.f * S;
@@ -85,7 +85,7 @@ void AFightHUD::DrawFighterPanel(int32 Fighter, bool bRight, bool bDetailed)
 		if (C.roster < 0) continue;
 		const fc::CompanionDef& Def = fc::companionDef(Setup, Fighter, C);
 		FString Label = UTF8_TO_TCHAR(Def.name);
-		if (C.down > 0) Label += FString::Printf(TEXT("  zurueck in %ds"), C.down / 60 + 1);
+		if (C.down > 0) Label += FString::Printf(TEXT("  back in %ds"), C.down / 60 + 1);
 		DrawLabel(Label, TextX, Y, FLinearColor(0.8f, 0.8f, 0.8f), 0.7f, bRight);
 		Y += 18.f * S;
 		DrawBar(X, Y, BarW * 0.3f, 8.f * S, static_cast<float>(C.hp) / Def.maxHp, FLinearColor(0.6f, 0.9f, 0.6f), bRight);
@@ -101,9 +101,8 @@ void AFightHUD::DrawCentered(const FString& Text, float Y, const FLinearColor& C
 	DrawText(Text, Color, (Canvas->ClipX - TW) * 0.5f, Y, Font, Scale * UiScale);
 }
 
-void AFightHUD::DrawScoreboard()
+void AFightHUD::DrawKoBoard()
 {
-	// Brawl: Top 5 nach K.O.s, rechts unten
 	const fc::MatchState& State = Director->GetState();
 	TArray<int32, TInlineAllocator<fc::kMaxFighters>> Order;
 	for (int32 i = 0; i < State.count; ++i) Order.Add(i);
@@ -112,7 +111,7 @@ void AFightHUD::DrawScoreboard()
 	const float S = UiScale;
 	float Y = Canvas->ClipY * 0.55f;
 	const float X = Canvas->ClipX - 40.f * S;
-	DrawLabel(TEXT("K.O.s"), X, Y, FLinearColor(1.f, 0.85f, 0.2f), 0.9f, true);
+	DrawLabel(TEXT("KOs"), X, Y, FLinearColor(1.f, 0.85f, 0.2f), 0.9f, true);
 	Y += 24.f * S;
 	for (int32 k = 0; k < FMath::Min(5, Order.Num()); ++k)
 	{
@@ -120,6 +119,48 @@ void AFightHUD::DrawScoreboard()
 		DrawLabel(FString::Printf(TEXT("%s  %d"), *Director->GetFighterLabel(i), State.f[i].kos), X, Y,
 			Director->GetFighterColor(i), 0.8f, true);
 		Y += 20.f * S;
+	}
+}
+
+void AFightHUD::DrawObjective(int32 Self)
+{
+	const fc::MatchState& State = Director->GetState();
+	const fc::MatchSetup& Setup = Director->GetSetup();
+	const fc::ModeRules& Rules = Setup.rules;
+	if (Rules.objective == fc::Objective::None || Rules.objective == fc::Objective::Elimination) return;
+
+	static const TCHAR* Names[] = { TEXT(""), TEXT(""), TEXT("DEATHMATCH"), TEXT("CAPTURE THE FLAG"), TEXT("ODDBALL"), TEXT("CHECKPOINTS") };
+	FString Line = Names[static_cast<int32>(Rules.objective)];
+	if (Rules.timeLimitFrames > 0)
+	{
+		const int32 Left = FMath::Max(0, Rules.timeLimitFrames - State.frame) / 60;
+		Line += FString::Printf(TEXT("   %d:%02d"), Left / 60, Left % 60);
+	}
+	if (Rules.scoreLimit > 0) Line += FString::Printf(TEXT("   first to %d"), Rules.scoreLimit);
+	DrawCentered(Line, 24.f * UiScale, FLinearColor::White, 0.9f, false);
+
+	// team scores in a row under the title (FFA deathmatch shows your own KOs instead)
+	if (Rules.teamCount == 0)
+	{
+		DrawCentered(FString::Printf(TEXT("Your KOs: %d"), State.f[Self].kos), 50.f * UiScale, FLinearColor::White, 1.1f, false);
+	}
+	else
+	{
+		const float Step = 90.f * UiScale;
+		float X = Canvas->ClipX * 0.5f - Step * (Rules.teamCount - 1) * 0.5f;
+		for (int32 t = 0; t < Rules.teamCount; ++t, X += Step)
+		{
+			const FString Score = FString::Printf(TEXT("%d"), State.objective.score[t]);
+			float TW = 0.f, TH = 0.f;
+			GetTextSize(Score, TW, TH, GEngine->GetMediumFont(), 1.3f * UiScale);
+			DrawText(Score, Director->GetTeamColor(t), X - TW * 0.5f, 48.f * UiScale, GEngine->GetMediumFont(), 1.3f * UiScale);
+		}
+	}
+
+	if (fc::carriesObjective(State, Self))
+	{
+		const TCHAR* What = Rules.objective == fc::Objective::Oddball ? TEXT("YOU HAVE THE BALL") : TEXT("YOU HAVE THE FLAG - BRING IT HOME");
+		DrawCentered(What, Canvas->ClipY * 0.75f, FLinearColor(1.f, 0.85f, 0.3f), 1.1f, false);
 	}
 }
 
@@ -135,32 +176,27 @@ void AFightHUD::DrawHUD()
 	const fc::MatchSetup& Setup = Director->GetSetup();
 	const float W = Canvas->ClipX;
 	const float H = Canvas->ClipY;
-	// Im Splitscreen ist der Viewport kleiner -> an der kleineren Seite skalieren
+	// splitscreen viewports are smaller, scale by whichever side is tighter
 	UiScale = FMath::Min(H / 1080.f, W / 960.f);
 	const float S = UiScale;
 
 	const int32 Self = FMath::Max(0, Director->GetPlayerIndex(PlayerOwner));
 	const fc::FighterState& Me = State.f[Self];
 
-	// Eigene Werte links, Lock-on-Ziel rechts
 	DrawFighterPanel(Self, false, true);
 	if (Me.target >= 0) DrawFighterPanel(Me.target, true, Setup.mode == fc::GameMode::Duel);
 
-	if (Setup.mode == fc::GameMode::Brawl)
-	{
-		const int32 Left = FMath::Max(0, fc::rulesFor(fc::GameMode::Brawl).timeLimitFrames - State.frame) / 60;
-		DrawCentered(FString::Printf(TEXT("%d:%02d"), Left / 60, Left % 60), 30.f * S, FLinearColor::White, 1.3f, false);
-		DrawScoreboard();
-	}
+	if (Setup.mode == fc::GameMode::Brawl) DrawKoBoard();
+	DrawObjective(Self);
 
-	// Realm-Anzeige für den eigenen bzw. einen Realm, in dem man steht
+	// your own realm, or an enemy realm you are standing in
 	for (int32 o = 0; o < State.count; ++o)
 	{
 		const fc::RealmState& R = State.f[o].realm;
 		const bool bMine = o == Self;
 		if (R.clashTimer > 0 && (bMine || R.clashWith == Self))
 		{
-			DrawCentered(FString::Printf(TEXT("REALM-CLASH!  Light haemmern  %d : %d"), R.clashCount,
+			DrawCentered(FString::Printf(TEXT("REALM CLASH!  Mash Light  %d : %d"), R.clashCount,
 				State.f[R.clashWith].realm.clashCount), H * 0.16f, FLinearColor(1.f, 0.85f, 0.2f), 1.3f, false);
 			break;
 		}
@@ -172,20 +208,20 @@ void AFightHUD::DrawHUD()
 			if (!bMine && FVector::Dist2D(Center, FightUnits::ToWorld(Me.pos)) > Radius) continue;
 			DrawCentered(FString::Printf(TEXT("REALM  %s  %s  %ds%s"), *Director->GetFighterLabel(o),
 				L.technique ? UTF8_TO_TCHAR(L.technique->name) : TEXT(""), R.timer / 60 + 1,
-				R.open ? TEXT("  (offen)") : TEXT("")), H * 0.16f, FLinearColor(1.f, 0.85f, 0.2f), 1.3f, false);
+				R.open ? TEXT("  (open)") : TEXT("")), H * 0.16f, FLinearColor(1.f, 0.85f, 0.2f), 1.3f, false);
 			break;
 		}
 	}
 
 	if (Me.out && Me.respawn > 0)
-		DrawCentered(FString::Printf(TEXT("K.O.  -  Respawn in %d"), Me.respawn / 60 + 1), H * 0.45f, FLinearColor::White, 1.6f, true);
+		DrawCentered(FString::Printf(TEXT("KO  -  respawn in %d"), Me.respawn / 60 + 1), H * 0.45f, FLinearColor::White, 1.6f, true);
 
 	if (State.winner != fc::kNoWinner)
 	{
 		FString Text;
-		if (State.winner == fc::kDraw) Text = TEXT("UNENTSCHIEDEN");
-		else if (Setup.mode == fc::GameMode::Teams) Text = FString::Printf(TEXT("TEAM %d GEWINNT"), State.winner + 1);
-		else Text = FString::Printf(TEXT("%s GEWINNT"), *Director->GetFighterLabel(State.winner));
+		if (State.winner == fc::kDraw) Text = TEXT("DRAW");
+		else if (Setup.rules.teamCount > 0) Text = FString::Printf(TEXT("TEAM %d WINS"), State.winner + 1);
+		else Text = FString::Printf(TEXT("%s WINS"), *Director->GetFighterLabel(State.winner));
 		DrawCentered(Text, H * 0.4f, FLinearColor::White, 2.f, true);
 	}
 
@@ -195,7 +231,7 @@ void AFightHUD::DrawHUD()
 			40.f * S, H - 60.f * S, FLinearColor(0.7f, 0.7f, 0.7f), 0.7f);
 	}
 
-	// Impact-Frame: kurzer Weiß-Blitz (Platzhalter für invertiertes Tusche-Bild)
+	// impact frame placeholder, the real one is an inverted ink frame
 	if (Director->GetImpactFlash() > 0.f)
 		DrawRect(FLinearColor(1.f, 1.f, 1.f, Director->GetImpactFlash() * 0.55f), 0.f, 0.f, W, H);
 }

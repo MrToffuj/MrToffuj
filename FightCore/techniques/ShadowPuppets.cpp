@@ -1,12 +1,7 @@
-// ============================================================================
-// SCHATTENMENAGERIE
-//  Core Rule : Schattenpool – bis zu 2 Schattenbestien gleichzeitig (Begleiter-System).
-//  Skills    : Schattenhunde (Offense), Nachtschwinge (Anti-Air), Schlundkröte (Grab-Pull)
-//              -> Skill beschwört die Bestie; ist sie schon da, führt sie ihren Signatur-Angriff aus.
-//  MaxOutput      : Flutkoloss (Zone)
-//  Realm     : Schattengarten (BuffField) – Bestien-Cooldowns laufen doppelt
-//  Schwäche  : Gefallene Bestien sind für die Runde weg.
-// ============================================================================
+// Shadow Puppets
+// Core rule: a shadow pool holding up to two beasts (built on the companion system).
+// Skills summon Shadow Hounds, Night Wing or Maw Toad; if it's already out it does its signature move.
+// Max Output: Flood Colossus. Realm: Shadow Garden (buff field). Weakness: fallen beasts stay dead.
 #include "Techniques.h"
 
 #include "fightcore/Simulation.h"
@@ -71,10 +66,10 @@ class ShadowLogic final : public TechniqueLogic {
 public:
     void onMoveEvent(const TechContext& c, int16_t move) const override {
         if (move <= kCallMaw) {
-            const int beast = move; // Skill-Move-Index == Bestien-Index
+            const int beast = move;
             int slot = c.companionSlot(static_cast<int16_t>(beast));
             if (slot >= 0) {
-                // Schon da -> Signatur-Angriff: Hunde greifen an, Schwinge Anti-Air, Kröte zieht
+                // already out: use its signature move instead
                 const AssistRole sig = beast == 0 ? AssistRole::Attack : beast == 1 ? AssistRole::AntiAir : AssistRole::Pressure;
                 c.command(slot, sig);
             } else {
@@ -88,7 +83,7 @@ public:
     }
 
     bool canUseSkill(const TechContext& c, int slot) const override {
-        return !c.companionLost(static_cast<int16_t>(slot)); // gefallene Bestie = Skill weg
+        return !c.companionLost(static_cast<int16_t>(slot));
     }
 
     void onRealmOpen(const TechContext& c) const override {

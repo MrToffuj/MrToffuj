@@ -1,5 +1,5 @@
 #pragma once
-// Interne Helfer, die Simulation.cpp und Companion.cpp teilen. Nicht Teil der öffentlichen API.
+// Shared between Simulation.cpp and Companion.cpp, not part of the public API.
 #include "fightcore/Simulation.h"
 
 namespace fc::detail {
@@ -13,7 +13,7 @@ bool overlap(Vec3 a, Fx ra, Vec3 b, Fx rb);
 Fx distXZ(Vec3 a, Vec3 b);
 bool realmAffects(const MatchState& m, const MatchSetup& s, int owner, int target);
 bool inRealmArea(const MatchState& m, int owner, Vec3 p);
-int enemyRealmAround(const MatchState& m, int i); // Besitzer eines gegnerischen Realms um i, sonst -1
+int enemyRealmAround(const MatchState& m, int i);  // owner of an enemy realm around i, or -1
 void triggerBurnout(MatchState& m, int i, Ev ev);
 void addRealmMeter(FighterState& f, int amount);
 bool hitsFighter(const MatchState& m, int target, Vec3 center, Fx radius);
@@ -24,23 +24,22 @@ bool isInvulnerable(const MatchState& m, const MatchSetup& s, int i);
 struct PendingHit {
     bool valid = false;
     const MoveDef* move = nullptr;
-    int16_t moveId = -1;       // wie FighterState::moveId (Projektil: Index + 100), -1 bei Begleitern
+    int16_t moveId = -1;  // -1 for companions
     bool projectile = false;
     Vec3 point{}, dir{};
-    int8_t companion = -1;     // Roster-Index, wenn ein Begleiter der Angreifer ist
-    bool link = false;         // Link-Attack (Bond-Stufe 2)
-    Vec3 source{};             // Position des Angreifers (Begleiter)
-    int8_t target = -1;        // getroffener Kämpfer
+    int8_t companion = -1;  // roster index if a companion hit
+    bool link = false;
+    Vec3 source{};  // where the companion hit from
+    int8_t target = -1;  // victim
 };
 void applyHit(MatchState& m, const MatchSetup& s, int atk, const PendingHit& h, Ev ev);
 
-// ---- Companion.cpp
+// Companion.cpp
 void buildRoster(MatchSetup& s);
 void initCompanions(MatchState& m, const MatchSetup& s, int owner);
 int32_t companionUpkeep(const MatchState& m, const MatchSetup& s, int owner);
 void tryAssistCommand(MatchState& m, const MatchSetup& s, int owner, Ev ev);
 void tickCompanions(MatchState& m, const MatchSetup& s, int owner, Ev ev);
-// Kampf-Interaktion
 void companionAttacks(MatchState& m, const MatchSetup& s, int owner, Ev ev);
 bool meleeHitsCompanion(MatchState& m, const MatchSetup& s, int atk, const MoveDef& mv, Vec3 center, Fx radius, Ev ev);
 bool projectileHitsCompanion(MatchState& m, const MatchSetup& s, Projectile& p, const MoveDef& mv, Ev ev);

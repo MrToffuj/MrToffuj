@@ -55,7 +55,7 @@ void Session::applyRollback() {
     const int32_t to = state_.frame;
     rollbackFrom_ = INT_MAX;
     state_ = slot(from).state;
-    for (int32_t f = from; f < to; ++f) simulate(f, nullptr); // Events schon gezeigt -> verwerfen
+    for (int32_t f = from; f < to; ++f) simulate(f, nullptr);  // already shown
     ++rollbacks_;
     lastDepth_ = to - from;
 }

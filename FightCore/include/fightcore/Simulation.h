@@ -43,16 +43,16 @@ const MapDef& harborDistrict(); // medium colony, 2v2
 const MapDef& oldCapital();     // large colony, Brawl / Custom
 } // namespace maps
 
-// Ein Build = Body + Technik (+ optionaler Pakt). Technik = nullptr nur beim Nullgeborenen.
+// technique is null for Heaven's Bind
 struct Loadout {
     const BodyDef* body = nullptr;
     const TechniqueDef* technique = nullptr;
     OathChoice oath;
     PlaystyleProfile profile;
-    const CompanionDef* assist = nullptr; // Summoner-Assist (nullptr -> Klingenwolf)
-    uint8_t team = 0;                     // nur im Teams-Modus relevant
+    const CompanionDef* assist = nullptr;  // summoner only, defaults to Blade Wolf
+    uint8_t team = 0;
     bool bot = false;
-    uint8_t botLevel = 1;                 // 0 leicht, 1 normal, 2 schwer
+    uint8_t botLevel = 1;  // 0 easy, 1 normal, 2 hard
 };
 
 struct MatchSetup {
@@ -61,10 +61,10 @@ struct MatchSetup {
     int8_t count = 2;
     Loadout loadout[kMaxFighters];
 
-    // Von finalize() berechnet:
+    // filled in by finalize()
     BodyStats stats[kMaxFighters];
     OathResult oath[kMaxFighters];
-    // Begleiter-Roster: [Summoner-Assist][Technik-Begleiter...][Pakt-Begleiter]
+    // companion roster: [summoner assist][technique companions...][oath companion]
     const CompanionDef* roster[kMaxFighters][kRosterMax] = {};
     int8_t rosterCount[kMaxFighters] = {};
     int8_t assistRoster[kMaxFighters] = {};
@@ -83,14 +83,13 @@ const MapDef& mapOf(const MatchSetup& s);
 bool carriesObjective(const MatchState& m, int fighter); // flag or ball carriers can't use their technique
 
 constexpr int kBufferWindow = 8;
-constexpr int16_t kRealmCastFrames = 60;  // für alle gleich
-constexpr int16_t kRealmFrames = 600;     // 10 s, für alle gleich
+constexpr int16_t kRealmCastFrames = 60;
+constexpr int16_t kRealmFrames = 600;
 constexpr int16_t kClashFrames = 90;
-constexpr int16_t kBurnoutFrames = 180;   // 3 s
+constexpr int16_t kBurnoutFrames = 180;
 constexpr int16_t kOpenRealmRadius = 10;
-constexpr int16_t kRealmRadius = 18;      // geschlossener Realm (deckt die 1v1-Arena ab)
+constexpr int16_t kRealmRadius = 18;
 
-// Basis-Moves, die JEDER Build hat
 enum BaseMove : int16_t { kLight, kHeavy, kLauncher, kAirLight, kGrab, kBurst, kRealmCast, kBaseMoveCount };
 constexpr int16_t kTechMoveOffset = 100;
 
@@ -99,14 +98,14 @@ const MoveDef& moveOf(const MatchSetup& s, int fighter, int16_t moveId);
 
 MatchState createMatch(const MatchSetup& setup);
 
-int bondLevel(const FighterState& f); // 1..3
+int bondLevel(const FighterState& f);
 bool isEnemy(const MatchState& m, int a, int b);
 bool canHurt(const MatchState& m, const MatchSetup& s, int attacker, int victim);
 const CompanionDef& companionDef(const MatchSetup& s, int owner, const CompanionState& c);
-// inputs: ein Eintrag pro Kämpfer (setup.count). Bot-Slots werden ignoriert, Bots denken in der Simulation.
+// One input per fighter. Bot slots are ignored, bots think inside the simulation.
 void step(MatchState& m, const MatchSetup& setup, const FrameInput inputs[], EventSink* events = nullptr);
 
-// Bot-KI: deterministisch aus dem Spielzustand -> rollback- und netzwerksicher.
+// Only reads the match state, so bots are deterministic and never need to be sent over the network.
 FrameInput botInput(const MatchState& m, const MatchSetup& setup, int fighter);
 
 } // namespace fc

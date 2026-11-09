@@ -42,7 +42,7 @@ void FFightInputSampler::Sample(const APlayerController* Own, const APlayerContr
 	Held = 0;
 	for (const FButtonMap& B : GButtons)
 	{
-		// Gamepad-Tasten kommen am eigenen Controller an, die Tastatur immer am Spieler-0-Controller.
+		// pads report to their own controller, the keyboard always reports to the first one
 		const bool bDown = AnyDown(Own, Pad.*B.Member) || AnyDown(KeyboardOwner, Keys.*B.Member);
 		const bool bPressed = AnyJustPressed(Own, Pad.*B.Member) || AnyJustPressed(KeyboardOwner, Keys.*B.Member);
 		if (bDown) Held |= B.Bit;
@@ -81,7 +81,6 @@ fc::FrameInput FFightInputSampler::Build(float Deadzone)
 	constexpr float Threshold = 0.383f;
 	const int H = V.X > Threshold ? 1 : (V.X < -Threshold ? -1 : 0);
 	const int Vt = V.Y > Threshold ? 1 : (V.Y < -Threshold ? -1 : 0);
-	// Numpad wie der Stick von hinten: 7 8 9 / 4 5 6 / 1 2 3, 8 = zum Gegner
 	static const uint8 Numpad[3][3] = { { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 } };
 	In.dir = Numpad[Vt + 1][H + 1];
 	return In;
